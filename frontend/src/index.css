@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color: #0f172a;
+  background: #f3f6f1;
+  font-family: Inter, system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: linear-gradient(180deg, #f8f8f2 0%, #eef6ef 100%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+input, select, textarea, button {
+  font: inherit;
+}
+
+.card {
+  @apply bg-white rounded-2xl border border-slate-200 shadow-soft;
+}
+
+.btn-primary {
+  @apply bg-brand-deep text-white px-4 py-2 rounded-xl font-medium hover:bg-brand-green transition;
+}
+
+.btn-secondary {
+  @apply bg-brand-gold text-brand-deep px-4 py-2 rounded-xl font-medium hover:opacity-90 transition;
+}
+
+.page-shell {
+  @apply max-w-7xl mx-auto px-4 py-6;
+}
