@@ -5,6 +5,18 @@ import { protect, authorize } from '../middleware/auth.js';
 const router = express.Router();
 router.use(protect);
 
+const ensureReceiptForSale = async ({ saleId, customerId, staffId, receiptNumber }) => {
+  const existing = await query('SELECT id FROM receipts WHERE sale_id = ? LIMIT 1', [saleId]);
+  if (existing.length) return existing[0];
+
+  const result = await query(
+    'INSERT INTO receipts (receipt_number, sale_id, customer_id, staff_id) VALUES (?, ?, ?, ?)',
+    [receiptNumber, saleId, customerId, staffId]
+  );
+
+  return { id: result.insertId };
+};
+
 router.get('/', async (req, res) => {
   const payments = await query(`
     SELECT p.*, c.full_name AS customer_name, u.full_name AS staff_name
@@ -41,6 +53,14 @@ router.post('/', authorize('admin', 'staff'), async (req, res) => {
     const newBalance = Number(sale.balance) - Number(amount);
     const nextStatus = newBalance <= 0 ? 'paid' : 'partially_paid';
     await query('UPDATE sales SET amount_paid = amount_paid + ?, balance = ?, status = ? WHERE id = ?', [Number(amount), newBalance, nextStatus, sale_id]);
+
+    const receiptNumber = `RCT-${Date.now()}`;
+    await ensureReceiptForSale({
+      saleId: sale_id,
+      customerId: customer_id,
+      staffId: req.user.id,
+      receiptNumber
+    });
 
     await query('INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)', [req.user.id, 'Payment recorded', 'payment', paymentResult.insertId, `Payment of ${amount} recorded`]);
 

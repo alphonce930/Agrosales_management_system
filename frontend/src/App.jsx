@@ -9,6 +9,7 @@ import StaffDashboard from './pages/StaffDashboard';
 import StaffCustomersPage from './pages/StaffCustomersPage';
 import StaffProductsPage from './pages/StaffProductsPage';
 import StaffSalesPage from './pages/StaffSalesPage';
+import StaffLendingPage from './pages/StaffLendingPage';
 import StaffPaymentsPage from './pages/StaffPaymentsPage';
 import StaffReceiptsPage from './pages/StaffReceiptsPage';
 import StaffReportsPage from './pages/StaffReportsPage';
@@ -59,6 +60,7 @@ export default function App() {
         <Route path="customers" element={<StaffCustomersPage />} />
         <Route path="products" element={<StaffProductsPage />} />
         <Route path="sales" element={<StaffSalesPage />} />
+        <Route path="lending" element={<StaffLendingPage />} />
         <Route path="payments" element={<StaffPaymentsPage />} />
         <Route path="receipts" element={<StaffReceiptsPage />} />
         <Route path="reports" element={<StaffReportsPage />} />

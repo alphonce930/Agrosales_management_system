@@ -1,16 +1,36 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Search, ShieldAlert, UserCog } from 'lucide-react';
-
-const initialStaff = [
-  { id: 1, name: 'John Mwaisumo', email: 'john@agro.com', role: 'Sales Officer', status: 'verified' },
-  { id: 2, name: 'Asha Nyerere', email: 'asha@agro.com', role: 'Field Agent', status: 'pending' },
-  { id: 3, name: 'Moses Kilele', email: 'moses@agro.com', role: 'Inventory Manager', status: 'verified' },
-  { id: 4, name: 'Grace Sanga', email: 'grace@agro.com', role: 'Customer Support', status: 'suspended' }
-];
+import api from '../services/api';
 
 export default function AdminStaffPage() {
-  const [staff, setStaff] = useState(initialStaff);
+  const [staff, setStaff] = useState([]);
   const [search, setSearch] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  const fetchStaff = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const { data } = await api.get('/admin/staff');
+      const normalized = (data || []).map((member) => ({
+        id: member.id,
+        name: member.full_name || member.name || 'Unnamed staff',
+        email: member.email || '',
+        role: member.role || 'staff',
+        status: member.status || 'pending'
+      }));
+      setStaff(normalized);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Unable to load staff verification list.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchStaff();
+  }, []);
 
   const filteredStaff = useMemo(() => {
     const query = search.toLowerCase();
@@ -21,8 +41,14 @@ export default function AdminStaffPage() {
     );
   }, [search, staff]);
 
-  const updateStatus = (id, nextStatus) => {
-    setStaff((current) => current.map((member) => member.id === id ? { ...member, status: nextStatus } : member));
+  const updateStatus = async (id, nextStatus) => {
+    try {
+      const endpoint = nextStatus === 'verified' ? `/admin/staff/${id}/verify` : `/admin/staff/${id}/suspend`;
+      await api.put(endpoint);
+      setStaff((current) => current.map((member) => member.id === id ? { ...member, status: nextStatus } : member));
+    } catch (err) {
+      setError(err.response?.data?.message || 'Status update failed.');
+    }
   };
 
   return (
@@ -62,6 +88,10 @@ export default function AdminStaffPage() {
         </div>
       </div>
 
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>
+      )}
+
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full text-left text-sm">
@@ -74,44 +104,54 @@ export default function AdminStaffPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredStaff.map((member) => (
-                <tr key={member.id} className="border-t border-slate-200">
-                  <td className="px-5 py-4">
-                    <div className="font-semibold text-slate-900">{member.name}</div>
-                    <div className="text-slate-500">{member.email}</div>
-                  </td>
-                  <td className="px-5 py-4 text-slate-700">{member.role}</td>
-                  <td className="px-5 py-4">
-                    <span
-                      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-                        member.status === 'verified'
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : member.status === 'pending'
-                            ? 'bg-amber-100 text-amber-700'
-                            : 'bg-rose-100 text-rose-700'
-                      }`}
-                    >
-                      {member.status}
-                    </span>
-                  </td>
-                  <td className="px-5 py-4">
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => updateStatus(member.id, 'verified')}
-                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-white hover:bg-emerald-700"
-                      >
-                        <CheckCircle2 size={14} /> Verify
-                      </button>
-                      <button
-                        onClick={() => updateStatus(member.id, 'suspended')}
-                        className="inline-flex items-center gap-1 rounded-lg bg-rose-600 px-2.5 py-1.5 text-white hover:bg-rose-700"
-                      >
-                        <ShieldAlert size={14} /> Suspend
-                      </button>
-                    </div>
-                  </td>
+              {loading ? (
+                <tr>
+                  <td colSpan="4" className="px-5 py-8 text-center text-slate-500">Loading staff data...</td>
                 </tr>
-              ))}
+              ) : filteredStaff.length ? (
+                filteredStaff.map((member) => (
+                  <tr key={member.id} className="border-t border-slate-200">
+                    <td className="px-5 py-4">
+                      <div className="font-semibold text-slate-900">{member.name}</div>
+                      <div className="text-slate-500">{member.email}</div>
+                    </td>
+                    <td className="px-5 py-4 text-slate-700 uppercase">{member.role}</td>
+                    <td className="px-5 py-4">
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                          member.status === 'verified'
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : member.status === 'pending'
+                              ? 'bg-amber-100 text-amber-700'
+                              : 'bg-rose-100 text-rose-700'
+                        }`}
+                      >
+                        {member.status}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4">
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => updateStatus(member.id, 'verified')}
+                          className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-white hover:bg-emerald-700"
+                        >
+                          <CheckCircle2 size={14} /> Verify
+                        </button>
+                        <button
+                          onClick={() => updateStatus(member.id, 'suspended')}
+                          className="inline-flex items-center gap-1 rounded-lg bg-rose-600 px-2.5 py-1.5 text-white hover:bg-rose-700"
+                        >
+                          <ShieldAlert size={14} /> Suspend
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="4" className="px-5 py-8 text-center text-slate-500">No staff accounts found.</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

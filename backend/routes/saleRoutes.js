@@ -5,6 +5,18 @@ import { protect, authorize } from '../middleware/auth.js';
 const router = express.Router();
 router.use(protect);
 
+const ensureReceiptForSale = async ({ saleId, customerId, staffId, receiptNumber }) => {
+  const existing = await query('SELECT id FROM receipts WHERE sale_id = ? LIMIT 1', [saleId]);
+  if (existing.length) return existing[0];
+
+  const result = await query(
+    'INSERT INTO receipts (receipt_number, sale_id, customer_id, staff_id) VALUES (?, ?, ?, ?)',
+    [receiptNumber, saleId, customerId, staffId]
+  );
+
+  return { id: result.insertId };
+};
+
 router.get('/', async (req, res) => {
   const sales = await query(`
     SELECT s.*, c.full_name AS customer_name, u.full_name AS staff_name
@@ -66,10 +78,12 @@ router.post('/', authorize('admin', 'staff'), async (req, res) => {
     }
 
     const receiptNumber = `RCPT-${Date.now()}`;
-    await connection.query(
-      'INSERT INTO receipts (receipt_number, sale_id, customer_id, staff_id) VALUES (?, ?, ?, ?)',
-      [receiptNumber, saleId, customer_id, req.user.id]
-    );
+    await ensureReceiptForSale({
+      saleId,
+      customerId: customer_id,
+      staffId: req.user.id,
+      receiptNumber
+    });
 
     await connection.query('INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)', [req.user.id, 'Sale created', 'sale', saleId, `Sale ${saleNumber} created`]);
 

@@ -7,7 +7,16 @@ router.use(protect);
 
 router.get('/', async (req, res) => {
   const receipts = await query(`
-    SELECT r.*, s.sale_number, c.full_name as customer_name, u.full_name as staff_name
+    SELECT
+      r.*,
+      s.sale_number,
+      s.total_amount,
+      s.amount_paid,
+      s.balance,
+      s.payment_type,
+      s.status AS sale_status,
+      c.full_name AS customer_name,
+      u.full_name AS staff_name
     FROM receipts r
     JOIN sales s ON s.id = r.sale_id
     JOIN customers c ON c.id = r.customer_id
@@ -19,7 +28,16 @@ router.get('/', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
   const receipts = await query(`
-    SELECT r.*, s.*, c.full_name as customer_name, u.full_name as staff_name
+    SELECT
+      r.*,
+      s.sale_number,
+      s.total_amount,
+      s.amount_paid,
+      s.balance,
+      s.payment_type,
+      s.status AS sale_status,
+      c.full_name AS customer_name,
+      u.full_name AS staff_name
     FROM receipts r
     JOIN sales s ON s.id = r.sale_id
     JOIN customers c ON c.id = r.customer_id
