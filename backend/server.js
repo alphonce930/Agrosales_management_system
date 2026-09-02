@@ -46,9 +46,7 @@ const bootstrap = async () => {
     await seedAdmin();
 
     app.listen(PORT, () => {
-      console.log(
-        `Golden Agrochemicals backend running on port ${PORT}`
-      );
+      console.log(`Golden Agrochemicals backend running on port ${PORT}`);
     });
   } catch (error) {
     console.error('Failed to start application:', error);
