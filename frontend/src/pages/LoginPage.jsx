@@ -47,7 +47,7 @@ export default function LoginPage() {
           <ArrowLeft size={16} /> Back to home
         </Link>
         <div className="text-center">
-          <img src={companyLogo} alt="Golden Agrochemicals" className="mx-auto h-24 w-24 rounded-3xl object-cover shadow-md" />
+          <img src={companyLogo} alt="Golden Agrochemicals" className="mx-auto h-[130px] w-[130px] object-cover" />
           <h1 className="mt-4 text-3xl font-bold text-slate-900">Welcome back</h1>
           <p className="mt-2 text-slate-500">Sign in to Golden Agrochemicals</p>
         </div>

@@ -7,7 +7,7 @@ export default function PublicLayout() {
       <header className="border-b border-slate-200 bg-white/80 backdrop-blur">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:py-4">
           <Link to="/" className="flex min-w-0 items-center gap-2 sm:gap-3">
-            <img src={companyLogo} alt="Golden Agrochemicals" className="h-14 w-14 shrink-0 rounded-2xl object-cover sm:h-16 sm:w-16" />
+            <img src={companyLogo} alt="Golden Agrochemicals" className="h-[100px] w-[100px] shrink-0 rounded-2xl object-cover" />
             <div className="min-w-0">
               <div className="truncate text-lg font-bold text-brand-deep sm:text-xl">Golden Agrochemicals</div>
               <div className="text-xs text-brand-gold font-medium">Farmers Priority</div>
