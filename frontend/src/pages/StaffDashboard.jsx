@@ -1,47 +1,25 @@
 import { DollarSign, Users, ShoppingCart, Wallet, Package2, ArrowUpRight } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
-
-const stats = [
-  { label: 'Today\'s Cash Sales', value: 'TZS 420,000', icon: DollarSign },
-  { label: 'Total Cash Sales', value: 'TZS 2.4M', icon: Wallet },
-  { label: 'Total Lending', value: 'TZS 1.1M', icon: ShoppingCart },
-  { label: 'Outstanding Debt', value: 'TZS 840,000', icon: ArrowUpRight },
-  { label: 'Total Customers', value: '1,240', icon: Users },
-  { label: 'Products Sold', value: '7,450', icon: Package2 },
-  { label: 'Payments Received', value: 'TZS 980,000', icon: DollarSign }
-];
-
-const salesData = [
-  { name: 'Mon', sales: 400 },
-  { name: 'Tue', sales: 700 },
-  { name: 'Wed', sales: 650 },
-  { name: 'Thu', sales: 980 },
-  { name: 'Fri', sales: 1200 },
-  { name: 'Sat', sales: 900 }
-];
-
-const paymentData = [
-  { name: 'Cash', value: 62 },
-  { name: 'Lending', value: 24 },
-  { name: 'Paid Lending', value: 14 }
-];
-
-const productData = [
-  { name: 'Herbicide', sales: 120 },
-  { name: 'Fertilizer', sales: 95 },
-  { name: 'Insecticide', sales: 82 },
-  { name: 'Seed', sales: 64 }
-];
-
-const debtData = [
-  { name: 'Jan', total: 800000, paid: 420000, outstanding: 380000 },
-  { name: 'Feb', total: 900000, paid: 560000, outstanding: 340000 },
-  { name: 'Mar', total: 1100000, paid: 610000, outstanding: 490000 }
-];
+import { useEffect, useState } from 'react';
+import api from '../services/api';
 
 const COLORS = ['#0f3d2e', '#d4a72c', '#4f8f78'];
 
 export default function StaffDashboard() {
+  const [data, setData] = useState(null);
+  useEffect(() => { api.get('/analytics/dashboard').then(({ data: result }) => setData(result)); }, []);
+  const totals = data?.totals || {};
+  const stats = [
+    { label: 'Total Cash Sales', value: `TZS ${Number(totals.total_cash_sales || 0).toLocaleString()}`, icon: Wallet },
+    { label: 'Total Lending', value: `TZS ${Number(totals.total_lending || 0).toLocaleString()}`, icon: ShoppingCart },
+    { label: 'Outstanding Debt', value: `TZS ${Number(totals.outstanding_debt || 0).toLocaleString()}`, icon: ArrowUpRight },
+    { label: 'Total Customers', value: totals.total_customers || 0, icon: Users }, { label: 'Products Sold', value: data?.products?.reduce((sum, item) => sum + item.sales, 0) || 0, icon: Package2 },
+    { label: 'Payments Received', value: `TZS ${Number(totals.total_payments || 0).toLocaleString()}`, icon: DollarSign }
+  ];
+  const salesData = (data?.monthly || []).map((item) => ({ name: item.name, sales: item.value }));
+  const paymentData = data?.payments || [];
+  const productData = data?.products || [];
+  const debtData = data?.debt || [];
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">

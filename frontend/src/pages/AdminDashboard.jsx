@@ -1,38 +1,28 @@
 import { Users, Package, ShoppingCart, Wallet, FileText } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { useEffect, useState } from 'react';
+import api from '../services/api';
 
-const stats = [
-  { label: 'Total Staff', value: '18', icon: Users },
-  { label: 'Verified Staff', value: '15', icon: Users },
-  { label: 'Pending Staff', value: '3', icon: FileText },
-  { label: 'Total Products', value: '58', icon: Package },
-  { label: 'Total Customers', value: '1,240', icon: Users },
-  { label: 'Total Sales', value: 'TZS 6.2M', icon: ShoppingCart },
-  { label: 'Total Cash Sales', value: 'TZS 4.8M', icon: Wallet },
-  { label: 'Total Lending', value: 'TZS 2.1M', icon: FileText },
-  { label: 'Total Payments', value: 'TZS 3.9M', icon: Wallet },
-  { label: 'Outstanding Debt', value: 'TZS 1.2M', icon: FileText }
-];
-
-const summaryData = [
-  { name: 'Jan', sales: 1100 },
-  { name: 'Feb', sales: 1500 },
-  { name: 'Mar', sales: 1300 },
-  { name: 'Apr', sales: 1850 },
-  { name: 'May', sales: 2200 },
-  { name: 'Jun', sales: 2600 }
-];
-
-const staffPerformance = [
-  { name: 'John', sales: 1200000 },
-  { name: 'Asha', sales: 980000 },
-  { name: 'Moses', sales: 840000 },
-  { name: 'Grace', sales: 1120000 }
-];
+const formatMoney = (value) => `TZS ${Number(value || 0).toLocaleString()}`;
 
 export default function AdminDashboard() {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    api.get('/analytics/dashboard').then(({ data: result }) => setData(result)).catch(() => setError('Unable to load dashboard data.'));
+  }, []);
+
+  const totals = data?.totals || {};
+  const stats = [
+    { label: 'Total Staff', value: totals.total_staff, icon: Users }, { label: 'Verified Staff', value: totals.verified_staff, icon: Users },
+    { label: 'Pending Staff', value: totals.pending_staff, icon: FileText }, { label: 'Total Products', value: totals.total_products, icon: Package },
+    { label: 'Total Customers', value: totals.total_customers, icon: Users }, { label: 'Total Sales', value: formatMoney(totals.total_sales_value), icon: ShoppingCart },
+    { label: 'Total Cash Sales', value: formatMoney(totals.total_cash_sales), icon: Wallet }, { label: 'Total Lending', value: formatMoney(totals.total_lending), icon: FileText },
+    { label: 'Total Payments', value: formatMoney(totals.total_payments), icon: Wallet }, { label: 'Outstanding Debt', value: formatMoney(totals.outstanding_debt), icon: FileText }
+  ];
   return (
-    <div className="space-y-6">
+    <div className="space-y-6">{error && <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         {stats.map(({ label, value, icon: Icon }) => (
           <div key={label} className="card p-4">
@@ -54,7 +44,7 @@ export default function AdminDashboard() {
           <h3 className="text-lg font-semibold text-slate-900">Sales Overview</h3>
           <div className="mt-4 h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={summaryData}>
+              <AreaChart data={data?.monthly || []}>
                 <defs>
                   <linearGradient id="adminSales" x1="0" x2="0" y1="0" y2="1">
                     <stop offset="5%" stopColor="#0f3d2e" stopOpacity={0.7} />
@@ -75,7 +65,7 @@ export default function AdminDashboard() {
           <h3 className="text-lg font-semibold text-slate-900">Staff Performance</h3>
           <div className="mt-4 h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={staffPerformance}>
+              <BarChart data={data?.staffPerformance || []}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" />
                 <YAxis />

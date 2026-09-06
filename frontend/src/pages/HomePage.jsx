@@ -17,12 +17,19 @@ export default function HomePage() {
             Manage products, track customer sales, handle lending, process payments, and build stronger farm support operations with a modern business system designed for agriculture.
           </p>
           <div className="mt-8 flex flex-wrap gap-4">
-            <a href="/login" className="btn-primary">Login</a>
-            <a href="/register" className="btn-secondary">Staff Registration</a>
+            <Link to="/login" className="btn-primary">Login</Link>
+            <Link to="/register" className="btn-secondary">Registration</Link>
           </div>
         </div>
 
         <div className="rounded-3xl bg-brand-deep p-8 text-white shadow-soft">
+          <div className="mb-6 flex items-center gap-4">
+            <img src={companyLogo} alt="Golden Agrochemicals logo" className="h-28 w-28 rounded-2xl bg-white object-cover p-1 shadow-lg" />
+            <div>
+              <p className="font-semibold text-brand-gold">Golden Agrochemicals</p>
+              <p className="text-sm text-white/75">Farmers Priority</p>
+            </div>
+          </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="rounded-2xl bg-white/10 p-4">
               <div className="text-sm text-brand-gold">Total Sales</div>
@@ -92,3 +99,5 @@ export default function HomePage() {
     </div>
   );
 }
+import { Link } from 'react-router-dom';
+import companyLogo from '../assets/golden-agrochemicals-logo.jpeg';

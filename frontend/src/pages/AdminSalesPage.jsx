@@ -1,20 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Filter, Search } from 'lucide-react';
-
-const initialSales = [
-  { id: 1, saleNumber: 'SALE-1001', customer: 'Joseph Mchomvu', total: 'TZS 320,000', type: 'cash', status: 'paid' },
-  { id: 2, saleNumber: 'SALE-1002', customer: 'Salma Mbwana', total: 'TZS 410,000', type: 'lending', status: 'partially_paid' },
-  { id: 3, saleNumber: 'SALE-1003', customer: 'Mikidadi Sule', total: 'TZS 560,000', type: 'cash', status: 'paid' }
-];
+import api from '../services/api';
 
 export default function AdminSalesPage() {
-  const [sales, setSales] = useState(initialSales);
+  const [sales, setSales] = useState([]);
+  useEffect(() => { api.get('/sales').then(({ data }) => setSales(data)).catch(() => setSales([])); }, []);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
 
   const filteredSales = sales.filter((sale) => {
-    const matchesSearch = sale.customer.toLowerCase().includes(search.toLowerCase()) || sale.saleNumber.toLowerCase().includes(search.toLowerCase());
-    const matchesType = typeFilter === 'all' || sale.type === typeFilter;
+    const matchesSearch = (sale.customer_name || '').toLowerCase().includes(search.toLowerCase()) || (sale.sale_number || '').toLowerCase().includes(search.toLowerCase());
+    const matchesType = typeFilter === 'all' || sale.payment_type === typeFilter;
     return matchesSearch && matchesType;
   });
 
@@ -57,11 +53,11 @@ export default function AdminSalesPage() {
         </div>
         <div className="card p-4">
           <div className="text-sm text-slate-500">Cash sales</div>
-          <div className="mt-2 text-2xl font-bold text-emerald-600">{sales.filter((item) => item.type === 'cash').length}</div>
+          <div className="mt-2 text-2xl font-bold text-emerald-600">{sales.filter((item) => item.payment_type === 'cash').length}</div>
         </div>
         <div className="card p-4">
           <div className="text-sm text-slate-500">Lending sales</div>
-          <div className="mt-2 text-2xl font-bold text-amber-600">{sales.filter((item) => item.type === 'lending').length}</div>
+          <div className="mt-2 text-2xl font-bold text-amber-600">{sales.filter((item) => item.payment_type === 'lending').length}</div>
         </div>
       </div>
 
@@ -80,14 +76,14 @@ export default function AdminSalesPage() {
             <tbody>
               {filteredSales.map((sale) => (
                 <tr key={sale.id} className="border-t border-slate-200">
-                  <td className="px-5 py-4 font-medium text-slate-900">{sale.saleNumber}</td>
-                  <td className="px-5 py-4 text-slate-700">{sale.customer}</td>
+                  <td className="px-5 py-4 font-medium text-slate-900">{sale.sale_number}</td>
+                  <td className="px-5 py-4 text-slate-700">{sale.customer_name}</td>
                   <td className="px-5 py-4">
                     <span className="rounded-full bg-brand-gold/20 px-2.5 py-1 text-xs font-semibold text-brand-deep uppercase">
-                      {sale.type}
+                      {sale.payment_type}
                     </span>
                   </td>
-                  <td className="px-5 py-4 font-semibold text-slate-900">{sale.total}</td>
+                  <td className="px-5 py-4 font-semibold text-slate-900">TZS {Number(sale.total_amount || 0).toLocaleString()}</td>
                   <td className="px-5 py-4">
                     <span
                       className={`rounded-full px-2.5 py-1 text-xs font-semibold ${

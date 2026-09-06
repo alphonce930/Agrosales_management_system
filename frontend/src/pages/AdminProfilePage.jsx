@@ -38,7 +38,7 @@ export default function AdminProfilePage() {
           </div>
 
           <div className="mt-6 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
-            This profile is used for account management and admin approval decisions across staff verification, sales reviews, and customer records.
+            This profile is used for operational administration across sales reviews, inventory, payments, reports, and customer records. User account verification and role assignment are handled by the super administrator.
           </div>
         </div>
       </div>

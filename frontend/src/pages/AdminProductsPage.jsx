@@ -1,32 +1,91 @@
-import { useState } from 'react';
-import { PackagePlus, Search, Trash2 } from 'lucide-react';
-
-const initialProducts = [
-  { id: 1, code: 'AG-101', name: 'Super Grow 20-20-20', stock: 120, price: 'TZS 24,500', status: 'active' },
-  { id: 2, code: 'AG-205', name: 'Pesticide Shield', stock: 38, price: 'TZS 16,200', status: 'low' },
-  { id: 3, code: 'AG-312', name: 'Soil Booster', stock: 90, price: 'TZS 12,800', status: 'active' }
-];
+import { useEffect, useMemo, useState } from 'react';
+import { PackagePlus, Save, Search, Trash2 } from 'lucide-react';
+import api from '../services/api';
 
 export default function AdminProductsPage() {
-  const [products, setProducts] = useState(initialProducts);
+  const [products, setProducts] = useState([]);
   const [search, setSearch] = useState('');
   const [form, setForm] = useState({ code: '', name: '', stock: 0, price: '', status: 'active' });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [updatingId, setUpdatingId] = useState(null);
 
-  const filteredProducts = products.filter((product) =>
-    product.name.toLowerCase().includes(search.toLowerCase()) ||
-    product.code.toLowerCase().includes(search.toLowerCase())
-  );
+  const fetchProducts = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const { data } = await api.get('/products');
+      setProducts(data || []);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Unable to load products from the database.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const addProduct = (event) => {
+  useEffect(() => {
+    fetchProducts();
+  }, []);
+
+  const filteredProducts = useMemo(() => {
+    const query = search.toLowerCase();
+    return products.filter((product) =>
+      product.name.toLowerCase().includes(query) ||
+      product.product_code.toLowerCase().includes(query)
+    );
+  }, [products, search]);
+
+  const addProduct = async (event) => {
     event.preventDefault();
     if (!form.code || !form.name || !form.price) return;
 
-    setProducts((current) => [{ id: Date.now(), ...form, price: `TZS ${Number(form.price).toLocaleString()}` }, ...current]);
-    setForm({ code: '', name: '', stock: 0, price: '', status: 'active' });
+    try {
+      setSaving(true);
+      setError('');
+      await api.post('/products', {
+        product_code: form.code,
+        name: form.name,
+        quantity: form.stock,
+        selling_price: Number(form.price),
+        status: form.status
+      });
+      setForm({ code: '', name: '', stock: 0, price: '', status: 'active' });
+      await fetchProducts();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Unable to save product to the database.');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const removeProduct = (id) => {
-    setProducts((current) => current.filter((product) => product.id !== id));
+  const updateProduct = async (product) => {
+    try {
+      setUpdatingId(product.id);
+      setError('');
+      await api.put(`/products/${product.id}`, {
+        name: product.name,
+        quantity: Number(product.quantity),
+        selling_price: Number(product.selling_price),
+        minimum_stock: Number(product.minimum_stock) || 0,
+        status: product.status
+      });
+      await fetchProducts();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Unable to update product.');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const removeProduct = async (id) => {
+    try {
+      setError('');
+      await api.delete(`/products/${id}`);
+      await fetchProducts();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Unable to remove product.');
+    }
   };
 
   return (
@@ -46,6 +105,10 @@ export default function AdminProductsPage() {
           />
         </div>
       </div>
+
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>
+      )}
 
       <div className="card p-5">
         <div className="mb-4 flex items-center gap-2 text-lg font-semibold text-slate-900">
@@ -86,10 +149,12 @@ export default function AdminProductsPage() {
               className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 outline-none focus:border-brand-deep"
             >
               <option value="active">Active</option>
-              <option value="low">Low stock</option>
+              <option value="out_of_stock">Out of stock</option>
               <option value="inactive">Inactive</option>
             </select>
-            <button type="submit" className="btn-primary whitespace-nowrap">Save</button>
+            <button type="submit" disabled={saving} className="btn-primary whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-60">
+              {saving ? 'Saving...' : 'Save'}
+            </button>
           </div>
         </form>
       </div>
@@ -108,35 +173,72 @@ export default function AdminProductsPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredProducts.map((product) => (
+              {loading ? (
+                <tr>
+                  <td colSpan="6" className="px-5 py-8 text-center text-slate-500">Loading products...</td>
+                </tr>
+              ) : filteredProducts.length ? filteredProducts.map((product) => (
                 <tr key={product.id} className="border-t border-slate-200">
-                  <td className="px-5 py-4 font-medium text-slate-900">{product.code}</td>
-                  <td className="px-5 py-4 text-slate-700">{product.name}</td>
-                  <td className="px-5 py-4 text-slate-700">{product.stock}</td>
-                  <td className="px-5 py-4 font-semibold text-slate-900">{product.price}</td>
+                  <td className="px-5 py-4 font-medium text-slate-900">{product.product_code}</td>
+                  <td className="px-5 py-4">
+                    <input
+                      value={product.name}
+                      onChange={(event) => setProducts((current) => current.map((item) => item.id === product.id ? { ...item, name: event.target.value } : item))}
+                      className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-slate-700 outline-none focus:border-brand-deep"
+                    />
+                  </td>
+                  <td className="px-5 py-4">
+                    <input
+                      type="number"
+                      value={product.quantity}
+                      onChange={(event) => setProducts((current) => current.map((item) => item.id === product.id ? { ...item, quantity: Number(event.target.value) } : item))}
+                      className="w-24 rounded-lg border border-slate-200 px-2 py-1.5 text-slate-700 outline-none focus:border-brand-deep"
+                    />
+                  </td>
+                  <td className="px-5 py-4">
+                    <input
+                      type="number"
+                      value={product.selling_price}
+                      onChange={(event) => setProducts((current) => current.map((item) => item.id === product.id ? { ...item, selling_price: event.target.value } : item))}
+                      className="w-32 rounded-lg border border-slate-200 px-2 py-1.5 font-semibold text-slate-900 outline-none focus:border-brand-deep"
+                    />
+                  </td>
                   <td className="px-5 py-4">
                     <span
                       className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                        product.status === 'active'
+                        product.status === 'active' && product.quantity > product.minimum_stock
                           ? 'bg-emerald-100 text-emerald-700'
-                          : product.status === 'low'
+                          : product.status === 'active'
                             ? 'bg-amber-100 text-amber-700'
                             : 'bg-slate-200 text-slate-700'
                       }`}
                     >
-                      {product.status}
+                      {product.status === 'active' && product.quantity <= product.minimum_stock ? 'low' : product.status}
                     </span>
                   </td>
                   <td className="px-5 py-4">
-                    <button
-                      onClick={() => removeProduct(product.id)}
-                      className="inline-flex items-center gap-1 rounded-lg bg-rose-100 px-2.5 py-1.5 text-rose-700 hover:bg-rose-200"
-                    >
-                      <Trash2 size={14} /> Remove
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => updateProduct(product)}
+                        disabled={updatingId === product.id}
+                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-100 px-2.5 py-1.5 text-emerald-700 hover:bg-emerald-200 disabled:opacity-60"
+                      >
+                        <Save size={14} /> {updatingId === product.id ? 'Updating...' : 'Update'}
+                      </button>
+                      <button
+                        onClick={() => removeProduct(product.id)}
+                        className="inline-flex items-center gap-1 rounded-lg bg-rose-100 px-2.5 py-1.5 text-rose-700 hover:bg-rose-200"
+                      >
+                        <Trash2 size={14} /> Remove
+                      </button>
+                    </div>
                   </td>
                 </tr>
-              ))}
+              )) : (
+                <tr>
+                  <td colSpan="6" className="px-5 py-8 text-center text-slate-500">No products found.</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

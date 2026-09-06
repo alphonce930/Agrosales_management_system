@@ -1,19 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Search } from 'lucide-react';
-
-const initialPayments = [
-  { id: 1, payment: 'PAY-401', customer: 'Joseph Mchomvu', amount: 'TZS 90,000', method: 'Cash', date: '2026-09-02' },
-  { id: 2, payment: 'PAY-402', customer: 'Salma Mbwana', amount: 'TZS 50,000', method: 'Mobile Money', date: '2026-09-02' },
-  { id: 3, payment: 'PAY-403', customer: 'Mikidadi Sule', amount: 'TZS 160,000', method: 'Bank', date: '2026-09-01' }
-];
+import api from '../services/api';
 
 export default function AdminPaymentsPage() {
-  const [payments, setPayments] = useState(initialPayments);
+  const [payments, setPayments] = useState([]);
+  useEffect(() => { api.get('/payments').then(({ data }) => setPayments(data)).catch(() => setPayments([])); }, []);
   const [search, setSearch] = useState('');
 
   const filteredPayments = payments.filter((payment) =>
-    payment.customer.toLowerCase().includes(search.toLowerCase()) ||
-    payment.payment.toLowerCase().includes(search.toLowerCase())
+    (payment.customer_name || '').toLowerCase().includes(search.toLowerCase()) ||
+    (payment.payment_number || '').toLowerCase().includes(search.toLowerCase())
   );
 
   return (
@@ -41,11 +37,11 @@ export default function AdminPaymentsPage() {
         </div>
         <div className="card p-4">
           <div className="text-sm text-slate-500">Cash</div>
-          <div className="mt-2 text-2xl font-bold text-emerald-600">{payments.filter((item) => item.method === 'Cash').length}</div>
+          <div className="mt-2 text-2xl font-bold text-emerald-600">{payments.filter((item) => item.payment_method === 'cash').length}</div>
         </div>
         <div className="card p-4">
           <div className="text-sm text-slate-500">Mobile / Bank</div>
-          <div className="mt-2 text-2xl font-bold text-brand-deep">{payments.filter((item) => item.method !== 'Cash').length}</div>
+          <div className="mt-2 text-2xl font-bold text-brand-deep">{payments.filter((item) => item.payment_method !== 'cash').length}</div>
         </div>
       </div>
 
@@ -64,11 +60,11 @@ export default function AdminPaymentsPage() {
             <tbody>
               {filteredPayments.map((payment) => (
                 <tr key={payment.id} className="border-t border-slate-200">
-                  <td className="px-5 py-4 font-medium text-slate-900">{payment.payment}</td>
-                  <td className="px-5 py-4 text-slate-700">{payment.customer}</td>
-                  <td className="px-5 py-4 text-slate-700">{payment.method}</td>
-                  <td className="px-5 py-4 font-semibold text-slate-900">{payment.amount}</td>
-                  <td className="px-5 py-4 text-slate-700">{payment.date}</td>
+                  <td className="px-5 py-4 font-medium text-slate-900">{payment.payment_number}</td>
+                  <td className="px-5 py-4 text-slate-700">{payment.customer_name}</td>
+                  <td className="px-5 py-4 text-slate-700">{payment.payment_method}</td>
+                  <td className="px-5 py-4 font-semibold text-slate-900">TZS {Number(payment.amount || 0).toLocaleString()}</td>
+                  <td className="px-5 py-4 text-slate-700">{new Date(payment.payment_date).toLocaleDateString()}</td>
                 </tr>
               ))}
             </tbody>

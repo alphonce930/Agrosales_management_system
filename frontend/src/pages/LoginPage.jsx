@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import GoogleSignInButton from '../components/GoogleSignInButton';
+import companyLogo from '../assets/golden-agrochemicals-logo.jpeg';
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, googleLogin } = useAuth();
   const [form, setForm] = useState({ email: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -18,7 +20,7 @@ export default function LoginPage() {
 
     try {
       const result = await login(form);
-      navigate(result.user.role === 'admin' ? '/admin' : '/staff');
+      navigate(result.user.role === 'super_admin' ? '/super-admin' : result.user.role === 'admin' ? '/admin' : '/staff');
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed.');
     } finally {
@@ -26,11 +28,26 @@ export default function LoginPage() {
     }
   };
 
+  const onGoogleCredential = async (credential) => {
+    setLoading(true);
+    setError('');
+    try {
+      const result = await googleLogin(credential);
+      navigate(result.user.role === 'super_admin' ? '/super-admin' : result.user.role === 'admin' ? '/admin' : '/staff');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Google sign-in failed. Please try again.');
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="page-shell flex min-h-[80vh] items-center justify-center py-16">
       <div className="card w-full max-w-md p-8">
+        <Link to="/" className="inline-flex items-center gap-2 text-sm font-medium text-brand-deep hover:underline">
+          <ArrowLeft size={16} /> Back to home
+        </Link>
         <div className="text-center">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-deep text-2xl font-bold text-white">G</div>
+          <img src={companyLogo} alt="Golden Agrochemicals" className="mx-auto h-24 w-24 rounded-3xl object-cover shadow-md" />
           <h1 className="mt-4 text-3xl font-bold text-slate-900">Welcome back</h1>
           <p className="mt-2 text-slate-500">Sign in to Golden Agrochemicals</p>
         </div>
@@ -68,8 +85,15 @@ export default function LoginPage() {
           </button>
         </form>
 
+        <div className="my-6 flex items-center gap-3 text-xs uppercase tracking-widest text-slate-400">
+          <span className="h-px flex-1 bg-slate-200" />
+          Or
+          <span className="h-px flex-1 bg-slate-200" />
+        </div>
+        <GoogleSignInButton onCredential={onGoogleCredential} disabled={loading} context="signin" />
+
         <div className="mt-6 text-center text-sm text-slate-600">
-          New staff? <Link to="/register" className="font-semibold text-brand-deep">Create account</Link>
+          Need an account? <Link to="/register" className="font-semibold text-brand-deep">Registration</Link>
         </div>
       </div>
     </div>

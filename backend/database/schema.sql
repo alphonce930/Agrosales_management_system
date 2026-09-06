@@ -9,12 +9,17 @@ CREATE TABLE IF NOT EXISTS users (
   phone VARCHAR(50),
   location VARCHAR(255),
   password VARCHAR(255) NOT NULL,
-  role ENUM('admin','staff') NOT NULL DEFAULT 'staff',
+  google_id VARCHAR(255) UNIQUE,
+  profile_picture TEXT,
+  auth_provider ENUM('local','google') NOT NULL DEFAULT 'local',
+  role ENUM('super_admin','admin','staff') NOT NULL DEFAULT 'staff',
   status ENUM('pending','verified','suspended') NOT NULL DEFAULT 'pending',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_users_role (role),
-  INDEX idx_users_status (status)
+  INDEX idx_users_status (status),
+  INDEX idx_users_role_status (role, status),
+  INDEX idx_users_google_id (google_id)
 );
 
 CREATE TABLE IF NOT EXISTS categories (
@@ -54,6 +59,7 @@ CREATE TABLE IF NOT EXISTS customers (
   location VARCHAR(255),
   address TEXT,
   customer_type ENUM('individual','farmer','business','institution') NOT NULL DEFAULT 'individual',
+  initial_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
   notes TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -77,7 +83,9 @@ CREATE TABLE IF NOT EXISTS sales (
   FOREIGN KEY (staff_id) REFERENCES users(id) ON DELETE RESTRICT,
   INDEX idx_sales_customer (customer_id),
   INDEX idx_sales_staff (staff_id),
-  INDEX idx_sales_date (sale_date)
+  INDEX idx_sales_date (sale_date),
+  INDEX idx_sales_staff_date (staff_id, sale_date),
+  INDEX idx_sales_customer_balance (customer_id, balance)
 );
 
 CREATE TABLE IF NOT EXISTS sale_items (
@@ -108,7 +116,8 @@ CREATE TABLE IF NOT EXISTS payments (
   FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE RESTRICT,
   FOREIGN KEY (staff_id) REFERENCES users(id) ON DELETE RESTRICT,
   INDEX idx_payments_customer (customer_id),
-  INDEX idx_payments_sale (sale_id)
+  INDEX idx_payments_sale (sale_id),
+  INDEX idx_payments_created_at (created_at)
 );
 
 CREATE TABLE IF NOT EXISTS receipts (
@@ -122,7 +131,8 @@ CREATE TABLE IF NOT EXISTS receipts (
   FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE RESTRICT,
   FOREIGN KEY (staff_id) REFERENCES users(id) ON DELETE RESTRICT,
   INDEX idx_receipts_sale (sale_id),
-  INDEX idx_receipts_customer (customer_id)
+  INDEX idx_receipts_customer (customer_id),
+  INDEX idx_receipts_issued_at (issued_at)
 );
 
 CREATE TABLE IF NOT EXISTS activity_logs (
@@ -138,6 +148,7 @@ CREATE TABLE IF NOT EXISTS activity_logs (
 );
 
 INSERT INTO users (full_name, username, email, phone, location, password, role, status) VALUES
+('Super Administrator', 'superadmin', 'superadmin@goldenagro.com', '+255700000000', 'Dar es Salaam', '$2a$10$DjDxTLtGZWgOJQJktOf3re7VaZceNmVm0WUmxBhLp2io8ybmHm1s6', 'super_admin', 'verified'),
 ('System Administrator', 'admin', 'admin@goldenagro.com', '+255700000001', 'Dar es Salaam', '$2a$10$QmK8f3T7.z0Jlk5j3yRBNe8Qh5d4Nqygl4R1JvZIZf0iS1LhZIfdy', 'admin', 'verified'),
 ('John Mwaisumo', 'staff1', 'staff1@goldenagro.com', '+255700000002', 'Morogoro', '$2a$10$QmK8f3T7.z0Jlk5j3yRBNe8Qh5d4Nqygl4R1JvZIZf0iS1LhZIfdy', 'staff', 'verified'),
 ('Asha Nyerere', 'staff2', 'staff2@goldenagro.com', '+255700000003', 'Dodoma', '$2a$10$QmK8f3T7.z0Jlk5j3yRBNe8Qh5d4Nqygl4R1JvZIZf0iS1LhZIfdy', 'staff', 'pending');

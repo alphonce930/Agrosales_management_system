@@ -1,39 +1,41 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus, Search, Trash2 } from 'lucide-react';
-
-const initialCustomers = [
-  { id: 1, name: 'Joseph Mchomvu', phone: '+255712000111', location: 'Arusha', type: 'Farmer', balance: 'TZS 340,000' },
-  { id: 2, name: 'Salma Mbwana', phone: '+255765000222', location: 'Morogoro', type: 'Business', balance: 'TZS 120,000' },
-  { id: 3, name: 'Mikidadi Sule', phone: '+255699000333', location: 'Dodoma', type: 'Institution', balance: 'TZS 540,000' }
-];
+import api from '../services/api';
 
 export default function AdminCustomersPage() {
-  const [customers, setCustomers] = useState(initialCustomers);
+  const [customers, setCustomers] = useState([]);
   const [search, setSearch] = useState('');
   const [form, setForm] = useState({ name: '', phone: '', location: '', type: 'Farmer' });
+  const [error, setError] = useState('');
+
+  const fetchCustomers = async () => {
+    try { const { data } = await api.get('/customers'); setCustomers(data); } catch { setError('Unable to load customers.'); }
+  };
+  useEffect(() => { fetchCustomers(); }, []);
 
   const filteredCustomers = customers.filter((customer) =>
     customer.name.toLowerCase().includes(search.toLowerCase()) ||
     customer.location.toLowerCase().includes(search.toLowerCase())
   );
 
-  const addCustomer = (event) => {
+  const addCustomer = async (event) => {
     event.preventDefault();
     if (!form.name || !form.phone || !form.location) return;
 
-    setCustomers((current) => [
-      { id: Date.now(), name: form.name, phone: form.phone, location: form.location, type: form.type, balance: 'TZS 0' },
-      ...current
-    ]);
+    try {
+      await api.post('/customers', { full_name: form.name, phone: form.phone, location: form.location, customer_type: form.type.toLowerCase() });
+      await fetchCustomers();
+    } catch (err) { setError(err.response?.data?.message || 'Unable to save customer.'); }
     setForm({ name: '', phone: '', location: '', type: 'Farmer' });
   };
 
-  const removeCustomer = (id) => {
-    setCustomers((current) => current.filter((customer) => customer.id !== id));
+  const removeCustomer = async (id) => {
+    try { await api.delete(`/customers/${id}`); await fetchCustomers(); } catch (err) { setError(err.response?.data?.message || 'Unable to delete customer.'); }
   };
 
   return (
     <div className="space-y-6">
+      {error && <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <p className="text-sm uppercase tracking-[0.18em] text-brand-deep/70">Customer records</p>
@@ -105,15 +107,15 @@ export default function AdminCustomersPage() {
             <tbody>
               {filteredCustomers.map((customer) => (
                 <tr key={customer.id} className="border-t border-slate-200">
-                  <td className="px-5 py-4 font-medium text-slate-900">{customer.name}</td>
+                  <td className="px-5 py-4 font-medium text-slate-900">{customer.full_name}</td>
                   <td className="px-5 py-4 text-slate-700">{customer.phone}</td>
                   <td className="px-5 py-4 text-slate-700">{customer.location}</td>
                   <td className="px-5 py-4">
                     <span className="rounded-full bg-brand-gold/20 px-2.5 py-1 text-xs font-semibold text-brand-deep">
-                      {customer.type}
+                      {customer.customer_type}
                     </span>
                   </td>
-                  <td className="px-5 py-4 font-semibold text-slate-900">{customer.balance}</td>
+                  <td className="px-5 py-4 font-semibold text-slate-900">TZS {Number(customer.balance || 0).toLocaleString()}</td>
                   <td className="px-5 py-4">
                     <button
                       onClick={() => removeCustomer(customer.id)}

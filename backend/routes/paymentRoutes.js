@@ -18,13 +18,15 @@ const ensureReceiptForSale = async ({ saleId, customerId, staffId, receiptNumber
 };
 
 router.get('/', async (req, res) => {
+  const staffScope = req.user.role === 'staff' ? 'WHERE p.staff_id = ?' : '';
   const payments = await query(`
     SELECT p.*, c.full_name AS customer_name, u.full_name AS staff_name
     FROM payments p
     JOIN customers c ON c.id = p.customer_id
     JOIN users u ON u.id = p.staff_id
+    ${staffScope}
     ORDER BY p.created_at DESC
-  `);
+  `, req.user.role === 'staff' ? [req.user.id] : []);
   return res.json(payments);
 });
 
@@ -35,12 +37,18 @@ router.post('/', authorize('admin', 'staff'), async (req, res) => {
       return res.status(400).json({ message: 'Customer, sale, and amount are required.' });
     }
 
-    const sales = await query('SELECT * FROM sales WHERE id = ?', [sale_id]);
+    const sales = await query(
+      `SELECT * FROM sales WHERE id = ?${req.user.role === 'staff' ? ' AND staff_id = ?' : ''}`,
+      req.user.role === 'staff' ? [sale_id, req.user.id] : [sale_id]
+    );
     if (!sales.length) {
       return res.status(404).json({ message: 'Sale not found.' });
     }
 
     const sale = sales[0];
+    if (Number(sale.customer_id) !== Number(customer_id)) {
+      return res.status(400).json({ message: 'The selected sale does not belong to this customer.' });
+    }
     if (Number(amount) > Number(sale.balance)) {
       return res.status(400).json({ message: 'Payment cannot exceed outstanding balance.' });
     }

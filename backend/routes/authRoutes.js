@@ -1,11 +1,50 @@
 import express from 'express';
+import crypto from 'node:crypto';
+import rateLimit from 'express-rate-limit';
+import { OAuth2Client } from 'google-auth-library';
+import dotenv from 'dotenv';
 import { query } from '../config/db.js';
 import { hashPassword, comparePassword, signToken } from '../utils/helpers.js';
 import { protect } from '../middleware/auth.js';
 
-const router = express.Router();
+dotenv.config();
 
-router.post('/register', async (req, res) => {
+const router = express.Router();
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many authentication attempts. Please try again later.' }
+});
+
+const safeUser = (user) => ({
+  id: user.id,
+  full_name: user.full_name,
+  username: user.username,
+  email: user.email,
+  phone: user.phone,
+  location: user.location,
+  profile_picture: user.profile_picture || null,
+  auth_provider: user.auth_provider || 'local',
+  role: user.role,
+  status: user.status,
+  created_at: user.created_at
+});
+
+const createUsername = async (email) => {
+  const base = email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '').slice(0, 40) || 'googleuser';
+  let username = base;
+  let suffix = 1;
+  while ((await query('SELECT id FROM users WHERE username = ?', [username])).length) {
+    username = `${base}${suffix}`;
+    suffix += 1;
+  }
+  return username;
+};
+
+router.post('/register', authLimiter, async (req, res) => {
   try {
     const { full_name, username, email, phone, location, password, confirmPassword } = req.body;
 
@@ -40,34 +79,11 @@ router.post('/register', async (req, res) => {
   }
 });
 
-router.post('/login', async (req, res) => {
+router.post('/login', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
       return res.status(400).json({ message: 'Email and password are required.' });
-    }
-
-    const normalizedEmail = String(email).trim().toLowerCase();
-    const isFallbackAdmin =
-      (normalizedEmail === 'admin@goldenagro.com' || normalizedEmail === 'admin') &&
-      String(password) === 'Admin@123';
-
-    if (isFallbackAdmin) {
-      const token = signToken({ id: 1, role: 'admin', email: 'admin@goldenagro.com' });
-      return res.json({
-        token,
-        user: {
-          id: 1,
-          full_name: 'System Administrator',
-          username: 'admin',
-          email: 'admin@goldenagro.com',
-          phone: '+255700000001',
-          location: 'Dar es Salaam',
-          role: 'admin',
-          status: 'verified',
-          created_at: new Date().toISOString()
-        }
-      });
     }
 
     const users = await query('SELECT * FROM users WHERE email = ? OR username = ?', [email, email]);
@@ -86,21 +102,76 @@ router.post('/login', async (req, res) => {
     }
 
     const token = signToken({ id: user.id, role: user.role, email: user.email });
-    const safeUser = {
-      id: user.id,
-      full_name: user.full_name,
-      username: user.username,
-      email: user.email,
-      phone: user.phone,
-      location: user.location,
-      role: user.role,
-      status: user.status,
-      created_at: user.created_at
-    };
-
-    return res.json({ token, user: safeUser });
+    return res.json({ token, user: safeUser(user) });
   } catch (error) {
     return res.status(500).json({ message: error.message || 'Login failed.' });
+  }
+});
+
+router.post('/google', authLimiter, async (req, res) => {
+  try {
+    const { credential } = req.body;
+    if (!credential || !process.env.GOOGLE_CLIENT_ID) {
+      return res.status(400).json({ message: 'Google authentication is not configured.' });
+    }
+
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID
+    });
+    const payload = ticket.getPayload();
+    if (!payload?.sub || !payload.email || payload.email_verified !== true) {
+      return res.status(401).json({ message: 'Google account verification failed.' });
+    }
+
+    const googleId = payload.sub;
+    const email = payload.email.trim().toLowerCase();
+    let users = await query('SELECT * FROM users WHERE google_id = ?', [googleId]);
+    let user = users[0];
+
+    if (!user) {
+      users = await query('SELECT * FROM users WHERE email = ?', [email]);
+      user = users[0];
+    }
+
+    if (user) {
+      if (user.status === 'suspended') {
+        return res.status(403).json({ message: 'This account has been suspended. Please contact the admin.' });
+      }
+
+      await query(
+        'UPDATE users SET google_id = ?, profile_picture = ?, auth_provider = ?, status = ? WHERE id = ?',
+        [googleId, payload.picture || user.profile_picture || null, 'google', 'verified', user.id]
+      );
+      user = { ...user, google_id: googleId, profile_picture: payload.picture || user.profile_picture || null, auth_provider: 'google', status: 'verified' };
+    } else {
+      const username = await createUsername(email);
+      const passwordHash = await hashPassword(crypto.randomBytes(32).toString('hex'));
+      const result = await query(
+        `INSERT INTO users
+          (full_name, username, email, phone, location, password, role, status, google_id, profile_picture, auth_provider)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [payload.name || email.split('@')[0], username, email, '', '', passwordHash, 'staff', 'verified', googleId, payload.picture || null, 'google']
+      );
+      const created = await query('SELECT * FROM users WHERE id = ?', [result.insertId]);
+      user = created[0] || {
+        id: result.insertId,
+        full_name: payload.name || email.split('@')[0],
+        username,
+        email,
+        role: 'staff',
+        status: 'verified',
+        profile_picture: payload.picture || null,
+        auth_provider: 'google'
+      };
+      await query('INSERT INTO activity_logs (user_id, action, entity_type, details) VALUES (?, ?, ?, ?)', [user.id, 'Google account created', 'user', 'Account created through Google authentication']);
+    }
+
+    const token = signToken({ id: user.id, role: user.role, email: user.email });
+    return res.json({ token, user: safeUser(user) });
+  } catch (error) {
+    console.error('Google authentication failed:', error.message);
+    return res.status(401).json({ message: 'Google authentication failed. Please try again.' });
   }
 });
 

@@ -15,13 +15,13 @@ import StaffReceiptsPage from './pages/StaffReceiptsPage';
 import StaffReportsPage from './pages/StaffReportsPage';
 import StaffProfilePage from './pages/StaffProfilePage';
 import AdminDashboard from './pages/AdminDashboard';
-import AdminStaffPage from './pages/AdminStaffPage';
 import AdminCustomersPage from './pages/AdminCustomersPage';
 import AdminProductsPage from './pages/AdminProductsPage';
 import AdminSalesPage from './pages/AdminSalesPage';
 import AdminPaymentsPage from './pages/AdminPaymentsPage';
 import AdminReportsPage from './pages/AdminReportsPage';
 import AdminProfilePage from './pages/AdminProfilePage';
+import SuperAdminUsersPage from './pages/SuperAdminUsersPage';
 
 const ProtectedRoute = ({ children, allowedRoles = [] }) => {
   const { user, loading } = useAuth();
@@ -40,13 +40,17 @@ export default function App() {
     <Routes>
       <Route path="/" element={<PublicLayout />}>
         <Route index element={<HomePage />} />
-        <Route path="login" element={user ? <Navigate to={user.role === 'admin' ? '/admin' : '/staff'} replace /> : <LoginPage />} />
+        <Route path="login" element={user ? <Navigate to={user.role === 'super_admin' ? '/super-admin' : user.role === 'admin' ? '/admin' : '/staff'} replace /> : <LoginPage />} />
         <Route path="register" element={<RegisterPage />} />
+      </Route>
+
+      <Route path="/super-admin" element={<ProtectedRoute allowedRoles={['super_admin']}><DashboardLayout role="super_admin" /></ProtectedRoute>}>
+        <Route index element={<SuperAdminUsersPage />} />
+        <Route path="profile" element={<AdminProfilePage />} />
       </Route>
 
       <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><DashboardLayout role="admin" /></ProtectedRoute>}>
         <Route index element={<AdminDashboard />} />
-        <Route path="staff" element={<AdminStaffPage />} />
         <Route path="customers" element={<AdminCustomersPage />} />
         <Route path="products" element={<AdminProductsPage />} />
         <Route path="sales" element={<AdminSalesPage />} />

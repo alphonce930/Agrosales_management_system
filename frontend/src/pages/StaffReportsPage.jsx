@@ -1,23 +1,12 @@
 import { BarChart3, TrendingUp, Wallet } from 'lucide-react';
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-
-const monthlySales = [
-  { name: 'Jan', value: 1800000 },
-  { name: 'Feb', value: 2200000 },
-  { name: 'Mar', value: 2500000 },
-  { name: 'Apr', value: 3000000 },
-  { name: 'May', value: 3300000 },
-  { name: 'Jun', value: 3600000 }
-];
-
-const salesByItem = [
-  { name: 'Herbicide', sales: 120 },
-  { name: 'Fertilizer', sales: 95 },
-  { name: 'Insecticide', sales: 82 },
-  { name: 'Seed', sales: 64 }
-];
+import { useEffect, useState } from 'react';
+import api from '../services/api';
 
 export default function StaffReportsPage() {
+  const [data, setData] = useState(null);
+  useEffect(() => { api.get('/analytics/dashboard').then(({ data: result }) => setData(result)); }, []);
+  const totals = data?.totals || {};
   return (
     <div className="space-y-6">
       <div>
@@ -26,9 +15,9 @@ export default function StaffReportsPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <div className="card p-4"><div className="flex items-center gap-2 text-slate-500"><TrendingUp size={16} /> Revenue</div><div className="mt-3 text-2xl font-bold text-slate-900">TZS 3.4M</div></div>
-        <div className="card p-4"><div className="flex items-center gap-2 text-slate-500"><Wallet size={16} /> Cash</div><div className="mt-3 text-2xl font-bold text-emerald-600">TZS 2.2M</div></div>
-        <div className="card p-4"><div className="flex items-center gap-2 text-slate-500"><BarChart3 size={16} /> Lending</div><div className="mt-3 text-2xl font-bold text-amber-600">TZS 1.2M</div></div>
+        <div className="card p-4"><div className="flex items-center gap-2 text-slate-500"><TrendingUp size={16} /> Revenue</div><div className="mt-3 text-2xl font-bold text-slate-900">TZS {Number(totals.total_sales_value || 0).toLocaleString()}</div></div>
+        <div className="card p-4"><div className="flex items-center gap-2 text-slate-500"><Wallet size={16} /> Cash</div><div className="mt-3 text-2xl font-bold text-emerald-600">TZS {Number(totals.total_cash_sales || 0).toLocaleString()}</div></div>
+        <div className="card p-4"><div className="flex items-center gap-2 text-slate-500"><BarChart3 size={16} /> Lending</div><div className="mt-3 text-2xl font-bold text-amber-600">TZS {Number(totals.total_lending || 0).toLocaleString()}</div></div>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-2">
@@ -36,7 +25,7 @@ export default function StaffReportsPage() {
           <h3 className="text-lg font-semibold text-slate-900">Monthly revenue</h3>
           <div className="mt-4 h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={monthlySales}>
+              <AreaChart data={data?.monthly || []}>
                 <defs>
                   <linearGradient id="staffRevenue" x1="0" x2="0" y1="0" y2="1">
                     <stop offset="5%" stopColor="#0f3d2e" stopOpacity={0.7} />
@@ -57,7 +46,7 @@ export default function StaffReportsPage() {
           <h3 className="text-lg font-semibold text-slate-900">Product demand</h3>
           <div className="mt-4 h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={salesByItem}>
+              <BarChart data={data?.products || []}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" />
                 <YAxis />

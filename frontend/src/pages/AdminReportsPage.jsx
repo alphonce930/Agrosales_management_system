@@ -1,23 +1,12 @@
 import { BarChart3, TrendingUp, Wallet } from 'lucide-react';
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-
-const monthlySales = [
-  { name: 'Jan', value: 2400000 },
-  { name: 'Feb', value: 3100000 },
-  { name: 'Mar', value: 2800000 },
-  { name: 'Apr', value: 3900000 },
-  { name: 'May', value: 4300000 },
-  { name: 'Jun', value: 5200000 }
-];
-
-const performance = [
-  { name: 'John', sales: 1200000 },
-  { name: 'Asha', sales: 980000 },
-  { name: 'Moses', sales: 840000 },
-  { name: 'Grace', sales: 1120000 }
-];
+import { useEffect, useState } from 'react';
+import api from '../services/api';
 
 export default function AdminReportsPage() {
+  const [data, setData] = useState(null);
+  useEffect(() => { api.get('/analytics/dashboard').then(({ data: result }) => setData(result)); }, []);
+  const totals = data?.totals || {};
   return (
     <div className="space-y-6">
       <div>
@@ -28,15 +17,15 @@ export default function AdminReportsPage() {
       <div className="grid gap-4 md:grid-cols-3">
         <div className="card p-4">
           <div className="flex items-center gap-2 text-slate-500"><TrendingUp size={16} /> Total revenue</div>
-          <div className="mt-3 text-2xl font-bold text-slate-900">TZS 6.2M</div>
+          <div className="mt-3 text-2xl font-bold text-slate-900">TZS {Number(totals.total_sales_value || 0).toLocaleString()}</div>
         </div>
         <div className="card p-4">
           <div className="flex items-center gap-2 text-slate-500"><Wallet size={16} /> Cash collected</div>
-          <div className="mt-3 text-2xl font-bold text-emerald-600">TZS 4.8M</div>
+          <div className="mt-3 text-2xl font-bold text-emerald-600">TZS {Number(totals.total_cash_sales || 0).toLocaleString()}</div>
         </div>
         <div className="card p-4">
           <div className="flex items-center gap-2 text-slate-500"><BarChart3 size={16} /> Outstanding debt</div>
-          <div className="mt-3 text-2xl font-bold text-amber-600">TZS 1.2M</div>
+          <div className="mt-3 text-2xl font-bold text-amber-600">TZS {Number(totals.outstanding_debt || 0).toLocaleString()}</div>
         </div>
       </div>
 
@@ -45,7 +34,7 @@ export default function AdminReportsPage() {
           <h3 className="text-lg font-semibold text-slate-900">Monthly revenue</h3>
           <div className="mt-4 h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={monthlySales}>
+              <AreaChart data={data?.monthly || []}>
                 <defs>
                   <linearGradient id="revenueFill" x1="0" x2="0" y1="0" y2="1">
                     <stop offset="5%" stopColor="#0f3d2e" stopOpacity={0.7} />
@@ -66,7 +55,7 @@ export default function AdminReportsPage() {
           <h3 className="text-lg font-semibold text-slate-900">Top performers</h3>
           <div className="mt-4 h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={performance}>
+              <BarChart data={data?.staffPerformance || []}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" />
                 <YAxis />

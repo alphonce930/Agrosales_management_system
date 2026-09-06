@@ -11,6 +11,7 @@
 body {
   margin: 0;
   min-height: 100vh;
+  overflow-x: hidden;
   background: linear-gradient(180deg, #f8f8f2 0%, #eef6ef 100%);
 }
 
@@ -35,5 +36,12 @@ input, select, textarea, button {
 }
 
 .page-shell {
-  @apply max-w-7xl mx-auto px-4 py-6;
+  @apply max-w-7xl mx-auto px-4 py-6 sm:px-6;
+}
+
+@media (max-width: 420px) {
+  .btn-primary,
+  .btn-secondary {
+    @apply px-3 text-sm;
+  }
 }

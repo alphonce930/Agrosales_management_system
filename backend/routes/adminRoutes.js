@@ -6,22 +6,6 @@ const router = express.Router();
 router.use(protect);
 router.use(authorize('admin'));
 
-router.get('/staff', async (req, res) => {
-  const users = await query('SELECT * FROM users ORDER BY created_at DESC');
-  return res.json(users);
-});
-
-router.put('/staff/:id/verify', async (req, res) => {
-  await query('UPDATE users SET status = ? WHERE id = ?', ['verified', req.params.id]);
-  await query('INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)', [req.user.id, 'Staff verified', 'user', req.params.id, 'Staff account verified']);
-  return res.json({ message: 'Staff verified successfully.' });
-});
-
-router.put('/staff/:id/suspend', async (req, res) => {
-  await query('UPDATE users SET status = ? WHERE id = ?', ['suspended', req.params.id]);
-  return res.json({ message: 'Staff suspended successfully.' });
-});
-
 router.get('/dashboard', async (req, res) => {
   const totals = await query(`
     SELECT 

@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken';
 import { query } from '../config/db.js';
 
 export const protect = async (req, res, next) => {
+  let decoded;
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -9,8 +10,17 @@ export const protect = async (req, res, next) => {
     }
 
     const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'golden-agro-secret');
-    const users = await query('SELECT id, full_name, username, email, phone, location, role, status FROM users WHERE id = ?', [decoded.id]);
+    decoded = jwt.verify(token, process.env.JWT_SECRET || 'golden-agro-secret');
+  } catch (error) {
+    return res.status(401).json({ message: 'Your session has expired. Please sign in again.' });
+  }
+
+  try {
+    let users = await query('SELECT id, full_name, username, email, phone, location, profile_picture, auth_provider, role, status FROM users WHERE id = ?', [decoded.id]);
+
+    if (!users.length && decoded.email) {
+      users = await query('SELECT id, full_name, username, email, phone, location, profile_picture, auth_provider, role, status FROM users WHERE email = ?', [decoded.email]);
+    }
 
     if (!users.length) {
       return res.status(401).json({ message: 'User not found.' });
@@ -22,9 +32,9 @@ export const protect = async (req, res, next) => {
     }
 
     req.user = user;
-    next();
+    return next();
   } catch (error) {
-    return res.status(401).json({ message: 'Invalid or expired token.' });
+    return next(error);
   }
 };
 
