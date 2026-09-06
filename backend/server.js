@@ -108,6 +108,7 @@ const bootstrap = async () => {
       await ensureColumn('customers', 'initial_amount', 'DECIMAL(12,2) NOT NULL DEFAULT 0 AFTER customer_type');
       await ensureColumn('customers', 'created_by', 'INT NULL AFTER notes');
       await ensureIndex('customers', 'idx_customers_created_by', '`created_by`');
+      await ensureColumn('receipts', 'notes', 'TEXT NULL AFTER staff_id');
       await query(`
         UPDATE customers c
         SET created_by = (

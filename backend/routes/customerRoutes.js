@@ -8,6 +8,7 @@ router.use(protect);
 
 router.get('/', async (req, res) => {
   try {
+    const staffScope = req.user.role === 'staff' ? 'WHERE c.created_by = ?' : '';
     const customers = await query(`
       SELECT c.*, COALESCE(creator.full_name, 'Unassigned') AS created_by_name,
         c.initial_amount + COALESCE(sales_balance.balance, 0) AS balance
@@ -18,8 +19,9 @@ router.get('/', async (req, res) => {
         FROM sales
         GROUP BY customer_id
       ) AS sales_balance ON sales_balance.customer_id = c.id
+      ${staffScope}
       ORDER BY c.created_at DESC
-    `);
+    `, req.user.role === 'staff' ? [req.user.id] : []);
     return res.json(customers);
   } catch (error) {
     return res.status(500).json({ message: error.message || 'Failed to fetch customers.' });
@@ -61,7 +63,10 @@ router.post('/', authorize('admin', 'staff'), async (req, res) => {
 });
 
 router.get('/:id', async (req, res) => {
-  const customers = await query('SELECT * FROM customers WHERE id = ?', [req.params.id]);
+  const customers = await query(
+    `SELECT * FROM customers WHERE id = ?${req.user.role === 'staff' ? ' AND created_by = ?' : ''}`,
+    req.user.role === 'staff' ? [req.params.id, req.user.id] : [req.params.id]
+  );
   if (!customers.length) return res.status(404).json({ message: 'Customer not found.' });
   return res.json(customers[0]);
 });
@@ -69,14 +74,19 @@ router.get('/:id', async (req, res) => {
 router.put('/:id', authorize('admin', 'staff'), async (req, res) => {
   const { full_name, phone, alternative_phone, email, location, address, customer_type, notes } = req.body;
   await query(
-    'UPDATE customers SET full_name = ?, phone = ?, alternative_phone = ?, email = ?, location = ?, address = ?, customer_type = ?, notes = ? WHERE id = ?',
-    [full_name, phone, alternative_phone || '', email || '', location, address || '', customer_type || 'individual', notes || '', req.params.id]
+    `UPDATE customers SET full_name = ?, phone = ?, alternative_phone = ?, email = ?, location = ?, address = ?, customer_type = ?, notes = ? WHERE id = ?${req.user.role === 'staff' ? ' AND created_by = ?' : ''}`,
+    req.user.role === 'staff'
+      ? [full_name, phone, alternative_phone || '', email || '', location, address || '', customer_type || 'individual', notes || '', req.params.id, req.user.id]
+      : [full_name, phone, alternative_phone || '', email || '', location, address || '', customer_type || 'individual', notes || '', req.params.id]
   );
   return res.json({ message: 'Customer updated successfully.' });
 });
 
 router.delete('/:id', authorize('admin', 'staff'), async (req, res) => {
-  await query('DELETE FROM customers WHERE id = ?', [req.params.id]);
+  await query(
+    `DELETE FROM customers WHERE id = ?${req.user.role === 'staff' ? ' AND created_by = ?' : ''}`,
+    req.user.role === 'staff' ? [req.params.id, req.user.id] : [req.params.id]
+  );
   return res.json({ message: 'Customer deleted successfully.' });
 });
 

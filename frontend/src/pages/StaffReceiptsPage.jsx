@@ -1,4 +1,4 @@
-import { Copy, Printer, Search, FileText, Building2, Phone, MapPin } from 'lucide-react';
+import { Copy, Printer, Search, FileText, Building2, Phone, MapPin, ReceiptText } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import api from '../services/api';
 
@@ -24,31 +24,40 @@ const formatDate = (value) => {
 
 export default function StaffReceiptsPage() {
   const [receipts, setReceipts] = useState([]);
+  const [sales, setSales] = useState([]);
   const [search, setSearch] = useState('');
   const [selectedReceiptId, setSelectedReceiptId] = useState(null);
+  const [receiptForm, setReceiptForm] = useState({ sale_id: '', notes: '' });
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+
+  const formatReceipt = (item) => ({
+    id: item.id,
+    receipt: item.receipt_number || `RCT-${item.id}`,
+    customer: item.customer_name || 'Unknown customer',
+    total: formatCurrency(item.total_amount || item.amount_paid || 0),
+    issued: formatDate(item.issued_at || item.sale_date),
+    paymentMethod: item.payment_type === 'cash' ? 'Cash' : 'Lending',
+    invoice: item.sale_number || `INV-${item.id}`,
+    note: item.notes || 'Payment completed successfully.',
+    amountValue: Number(item.total_amount || item.amount_paid || 0),
+    raw: item
+  });
 
   useEffect(() => {
     const fetchReceipts = async () => {
       try {
-        const { data } = await api.get('/receipts');
-        const formatted = data.map((item) => ({
-          id: item.id,
-          receipt: item.receipt_number || `RCT-${item.id}`,
-          customer: item.customer_name || 'Unknown customer',
-          total: formatCurrency(item.total_amount || item.amount_paid || 0),
-          issued: formatDate(item.issued_at || item.sale_date),
-          paymentMethod: item.payment_type === 'cash' ? 'Cash' : 'Lending',
-          invoice: item.sale_number || `INV-${item.id}`,
-          note: item.note || 'Payment completed successfully.',
-          amountValue: Number(item.total_amount || item.amount_paid || 0),
-          raw: item
-        }));
+        const [receiptResponse, saleResponse] = await Promise.all([api.get('/receipts'), api.get('/sales')]);
+        const formatted = receiptResponse.data.map(formatReceipt);
         setReceipts(formatted);
+        setSales(saleResponse.data || []);
         if (formatted[0]) setSelectedReceiptId(formatted[0].id);
+        if (saleResponse.data?.[0]) setReceiptForm((current) => ({ ...current, sale_id: String(saleResponse.data[0].id) }));
       } catch (error) {
         console.error('Failed to fetch receipts', error);
         setReceipts([]);
+        setError('Unable to load your receipt records.');
       } finally {
         setLoading(false);
       }
@@ -67,6 +76,29 @@ export default function StaffReceiptsPage() {
     receipt.receipt.toLowerCase().includes(search.toLowerCase()) ||
     receipt.invoice.toLowerCase().includes(search.toLowerCase())
   );
+
+  const selectedSale = useMemo(
+    () => sales.find((sale) => String(sale.id) === String(receiptForm.sale_id)),
+    [sales, receiptForm.sale_id]
+  );
+
+  const createReceipt = async (event) => {
+    event.preventDefault();
+    if (!receiptForm.sale_id) return;
+    setGenerating(true);
+    setError('');
+    try {
+      const { data } = await api.post('/receipts', { sale_id: Number(receiptForm.sale_id), notes: receiptForm.notes });
+      const receipt = formatReceipt(data.receipt);
+      setReceipts((current) => [receipt, ...current.filter((item) => item.id !== receipt.id)]);
+      setSelectedReceiptId(receipt.id);
+      setReceiptForm((current) => ({ ...current, notes: '' }));
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Unable to generate the e-receipt.');
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   const buildReceiptText = (receipt) => [
     `${companyInfo.name} - ${companyInfo.branch}`,
@@ -99,7 +131,9 @@ export default function StaffReceiptsPage() {
           <title>Receipt for ${receipt.customer}</title>
           <style>
             body { font-family: Arial, sans-serif; background: #fff; color: #0f172a; margin: 0; padding: 32px; }
-            .receipt { max-width: 420px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 18px; padding: 24px; }
+            @page { size: 80mm auto; margin: 3mm; }
+            body { width: 74mm; margin: 0 auto; padding: 0; }
+            .receipt { width: 74mm; margin: 0; padding: 0; }
             .brand { text-align: center; font-weight: 800; font-size: 24px; color: #0f172a; }
             .muted { color: #475569; font-size: 13px; }
             .title { text-align: center; font-weight: 700; font-size: 18px; padding-bottom: 12px; border-bottom: 1px dashed #cbd5e1; margin-top: 12px; text-transform: uppercase; }
@@ -174,6 +208,48 @@ export default function StaffReceiptsPage() {
             className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 outline-none focus:border-brand-deep"
           />
         </div>
+      </div>
+
+      {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>}
+
+      <div className="card p-5">
+        <div className="mb-4 flex items-center gap-2 text-lg font-semibold text-slate-900">
+          <ReceiptText size={19} className="text-brand-deep" /> Generate e-receipt
+        </div>
+        <form onSubmit={createReceipt} className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <select
+            value={receiptForm.sale_id}
+            onChange={(event) => setReceiptForm((current) => ({ ...current, sale_id: event.target.value }))}
+            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 outline-none focus:border-brand-deep"
+            required
+          >
+            <option value="">Select your sale</option>
+            {sales.map((sale) => (
+              <option key={sale.id} value={sale.id}>{sale.sale_number} — {sale.customer_name}</option>
+            ))}
+          </select>
+          <input
+            value={selectedSale?.customer_name || ''}
+            placeholder="Customer"
+            readOnly
+            className="rounded-xl border border-slate-200 bg-slate-100 px-3 py-2.5 text-slate-600"
+          />
+          <input
+            value={receiptForm.notes}
+            onChange={(event) => setReceiptForm((current) => ({ ...current, notes: event.target.value }))}
+            placeholder="Receipt note (optional)"
+            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 outline-none focus:border-brand-deep"
+          />
+          <button type="submit" disabled={generating || !receiptForm.sale_id} className="btn-primary disabled:opacity-60">
+            {generating ? 'Generating...' : 'Generate receipt'}
+          </button>
+        </form>
+        {selectedSale && (
+          <div className="mt-3 text-sm text-slate-500">
+            Sale total: <span className="font-semibold text-slate-700">{formatCurrency(selectedSale.total_amount)}</span>
+            <span className="mx-2">•</span>{selectedSale.payment_type === 'cash' ? 'Cash' : 'Lending'}
+          </div>
+        )}
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">

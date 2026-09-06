@@ -41,12 +41,28 @@ router.post('/', authorize('admin', 'staff'), async (req, res) => {
       return res.status(400).json({ message: 'Customer and products are required.' });
     }
 
+    if (req.user.role === 'staff') {
+      const [customers] = await connection.query(
+        'SELECT id FROM customers WHERE id = ? AND created_by = ?',
+        [customer_id, req.user.id]
+      );
+      if (!customers.length) throw new Error('You can only create sales for your own customers.');
+    }
+
+    const requestedQuantities = new Map();
+    for (const item of products) {
+      const productId = Number(item.product_id);
+      const quantity = Number(item.quantity);
+      if (!Number.isInteger(productId) || productId <= 0 || !Number.isInteger(quantity) || quantity <= 0) {
+        throw new Error('Each sale product and quantity must be valid.');
+      }
+      requestedQuantities.set(productId, (requestedQuantities.get(productId) || 0) + quantity);
+    }
+
     const saleItems = [];
     let totalAmount = 0;
-    for (const item of products) {
-      const quantity = Number(item.quantity);
-      if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('Each product quantity must be greater than zero.');
-      const productRows = await connection.query('SELECT id, quantity, selling_price FROM products WHERE id = ? FOR UPDATE', [item.product_id]);
+    for (const [productId, quantity] of requestedQuantities) {
+      const productRows = await connection.query('SELECT id, quantity, selling_price FROM products WHERE id = ? FOR UPDATE', [productId]);
       const product = productRows[0][0];
       if (!product) throw new Error('Product not found.');
       if (Number(product.quantity) < quantity) throw new Error(`Insufficient stock for product ${product.id}.`);

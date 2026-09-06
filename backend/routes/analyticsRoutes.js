@@ -26,7 +26,10 @@ router.get('/dashboard', async (req, res) => {
     ? await query("SELECT COUNT(*) AS total_staff, SUM(status = 'verified') AS verified_staff, SUM(status = 'pending') AS pending_staff FROM users WHERE role = 'staff'")
     : [{ total_staff: 0, verified_staff: 0, pending_staff: 0 }];
   const productCount = await query('SELECT COUNT(*) AS total_products FROM products');
-  const customerCount = await query('SELECT COUNT(*) AS total_customers FROM customers');
+  const customerCount = await query(
+    `SELECT COUNT(*) AS total_customers FROM customers${req.user.role === 'staff' ? ' WHERE created_by = ?' : ''}`,
+    req.user.role === 'staff' ? [req.user.id] : []
+  );
 
   return res.json({
     totals: { ...totals[0], ...userCounts[0], ...productCount[0], ...customerCount[0] },

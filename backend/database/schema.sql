@@ -129,6 +129,7 @@ CREATE TABLE IF NOT EXISTS receipts (
   sale_id INT NOT NULL,
   customer_id INT NOT NULL,
   staff_id INT NOT NULL,
+  notes TEXT,
   issued_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE RESTRICT,
   FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE RESTRICT,
