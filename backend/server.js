@@ -22,6 +22,20 @@ const ensureColumn = async (table, column, definition) => {
   }
 };
 
+const ensureIndex = async (table, index, columns) => {
+  const rows = await query(
+    `SELECT COUNT(*) AS index_count
+     FROM information_schema.statistics
+     WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?`,
+    [table, index]
+  );
+
+  if (!Number(rows[0]?.index_count)) {
+    await query(`ALTER TABLE \`${table}\` ADD INDEX \`${index}\` (${columns})`);
+    console.log(`Added ${index} index for database compatibility.`);
+  }
+};
+
 const seedAdmin = async () => {
   const rows = await query(
     'SELECT id, username, email FROM users WHERE username = ? OR email = ?',
@@ -92,6 +106,19 @@ const bootstrap = async () => {
       await ensureColumn('users', 'auth_provider', "ENUM('local','google') NOT NULL DEFAULT 'local' AFTER profile_picture");
       await query("ALTER TABLE users MODIFY role ENUM('super_admin','admin','staff') NOT NULL DEFAULT 'staff'");
       await ensureColumn('customers', 'initial_amount', 'DECIMAL(12,2) NOT NULL DEFAULT 0 AFTER customer_type');
+      await ensureColumn('customers', 'created_by', 'INT NULL AFTER notes');
+      await ensureIndex('customers', 'idx_customers_created_by', '`created_by`');
+      await query(`
+        UPDATE customers c
+        SET created_by = (
+          SELECT log.user_id
+          FROM activity_logs log
+          WHERE log.entity_type = 'customer' AND log.entity_id = c.id AND log.user_id IS NOT NULL
+          ORDER BY log.created_at ASC
+          LIMIT 1
+        )
+        WHERE c.created_by IS NULL
+      `);
       await seedSuperAdmin();
       await seedAdmin();
     } else {

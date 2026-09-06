@@ -13,10 +13,12 @@ export default function AdminCustomersPage() {
   };
   useEffect(() => { fetchCustomers(); }, []);
 
-  const filteredCustomers = customers.filter((customer) =>
-    customer.name.toLowerCase().includes(search.toLowerCase()) ||
-    customer.location.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredCustomers = customers.filter((customer) => {
+    const searchTerm = search.toLowerCase();
+    return (customer.full_name || '').toLowerCase().includes(searchTerm) ||
+      (customer.location || '').toLowerCase().includes(searchTerm) ||
+      (customer.created_by_name || '').toLowerCase().includes(searchTerm);
+  });
 
   const addCustomer = async (event) => {
     event.preventDefault();
@@ -38,7 +40,7 @@ export default function AdminCustomersPage() {
       {error && <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <p className="text-sm uppercase tracking-[0.18em] text-brand-deep/70">Customer records</p>
+          <p className="text-sm uppercase tracking-[0.18em] text-brand-deep/70">All staff customer records</p>
           <h2 className="text-3xl font-bold text-slate-900">Customer directory</h2>
         </div>
         <div className="relative w-full lg:w-80">
@@ -99,6 +101,7 @@ export default function AdminCustomersPage() {
                 <th className="px-5 py-3 font-medium">Customer</th>
                 <th className="px-5 py-3 font-medium">Phone</th>
                 <th className="px-5 py-3 font-medium">Location</th>
+                <th className="px-5 py-3 font-medium">Added by</th>
                 <th className="px-5 py-3 font-medium">Type</th>
                 <th className="px-5 py-3 font-medium">Balance</th>
                 <th className="px-5 py-3 font-medium">Action</th>
@@ -110,6 +113,7 @@ export default function AdminCustomersPage() {
                   <td className="px-5 py-4 font-medium text-slate-900">{customer.full_name}</td>
                   <td className="px-5 py-4 text-slate-700">{customer.phone}</td>
                   <td className="px-5 py-4 text-slate-700">{customer.location}</td>
+                  <td className="px-5 py-4 text-slate-700">{customer.created_by_name || 'Unassigned'}</td>
                   <td className="px-5 py-4">
                     <span className="rounded-full bg-brand-gold/20 px-2.5 py-1 text-xs font-semibold text-brand-deep">
                       {customer.customer_type}

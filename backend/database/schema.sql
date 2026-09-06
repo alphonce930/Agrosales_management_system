@@ -61,10 +61,13 @@ CREATE TABLE IF NOT EXISTS customers (
   customer_type ENUM('individual','farmer','business','institution') NOT NULL DEFAULT 'individual',
   initial_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
   notes TEXT,
+  created_by INT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
   INDEX idx_customers_name (full_name),
-  INDEX idx_customers_phone (phone)
+  INDEX idx_customers_phone (phone),
+  INDEX idx_customers_created_by (created_by)
 );
 
 CREATE TABLE IF NOT EXISTS sales (

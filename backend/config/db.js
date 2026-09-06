@@ -173,7 +173,7 @@ const fallbackQuery = async (sql, params = []) => {
     return { insertId: newLog.id };
   }
 
-  if (normalized.startsWith('SELECT c.*, c.initial_amount + COALESCE')) {
+  if (normalized.startsWith('SELECT c.*, COALESCE(creator.full_name') || normalized.startsWith('SELECT c.*, c.initial_amount + COALESCE')) {
     const customers = [...fallbackStore.customers].sort((first, second) => new Date(second.created_at) - new Date(first.created_at));
     if (normalized.includes('WHERE c.id = ?')) {
       return customers.filter((customer) => customer.id === Number(params[0]));
@@ -194,6 +194,8 @@ const fallbackQuery = async (sql, params = []) => {
       customer_type: params[7],
       initial_amount: params[8],
       notes: params[9],
+      created_by: params[10] || null,
+      created_by_name: params[10] ? fallbackStore.users.find((user) => user.id === Number(params[10]))?.full_name || 'Unassigned' : 'Unassigned',
       balance: params[8],
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()

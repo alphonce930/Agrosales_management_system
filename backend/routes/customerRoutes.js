@@ -9,8 +9,10 @@ router.use(protect);
 router.get('/', async (req, res) => {
   try {
     const customers = await query(`
-      SELECT c.*, c.initial_amount + COALESCE(sales_balance.balance, 0) AS balance
+      SELECT c.*, COALESCE(creator.full_name, 'Unassigned') AS created_by_name,
+        c.initial_amount + COALESCE(sales_balance.balance, 0) AS balance
       FROM customers c
+      LEFT JOIN users creator ON creator.id = c.created_by
       LEFT JOIN (
         SELECT customer_id, SUM(balance) AS balance
         FROM sales
@@ -33,15 +35,17 @@ router.post('/', authorize('admin', 'staff'), async (req, res) => {
 
     const customerCode = `CUST-${Date.now()}`;
     const result = await query(
-      'INSERT INTO customers (customer_code, full_name, phone, alternative_phone, email, location, address, customer_type, initial_amount, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [customerCode, full_name, phone, alternative_phone || '', email || '', location, address || '', customer_type || 'individual', Number(initial_amount ?? 0), notes || '']
+      'INSERT INTO customers (customer_code, full_name, phone, alternative_phone, email, location, address, customer_type, initial_amount, notes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [customerCode, full_name, phone, alternative_phone || '', email || '', location, address || '', customer_type || 'individual', Number(initial_amount ?? 0), notes || '', req.user.id]
     );
 
     await query('INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)', [req.user.id, 'Customer added', 'customer', result.insertId, `Customer ${full_name} added`]);
 
     const createdCustomers = await query(`
-      SELECT c.*, c.initial_amount + COALESCE(sales_balance.balance, 0) AS balance
+      SELECT c.*, COALESCE(creator.full_name, 'Unassigned') AS created_by_name,
+        c.initial_amount + COALESCE(sales_balance.balance, 0) AS balance
       FROM customers c
+      LEFT JOIN users creator ON creator.id = c.created_by
       LEFT JOIN (
         SELECT customer_id, SUM(balance) AS balance
         FROM sales
