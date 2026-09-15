@@ -1,7 +1,7 @@
 
 import app from './app.js';
 import dotenv from 'dotenv';
-import { initializeDatabase, query } from './config/db.js';
+import { initializeDatabase, query, isPostgresDatabase } from './config/db.js';
 import { hashPassword } from './utils/helpers.js';
 
 dotenv.config();
@@ -99,6 +99,10 @@ const bootstrap = async () => {
   try {
     const databaseReady = await initializeDatabase();
     if (databaseReady || process.env.ALLOW_MEMORY_DB === 'true') {
+      if (isPostgresDatabase) {
+        await seedSuperAdmin();
+        await seedAdmin();
+      } else {
       // Existing installations may predate Google sign-in support. Add these
       // columns before auth middleware can select them.
       await ensureColumn('users', 'google_id', 'VARCHAR(255) NULL UNIQUE AFTER password');
@@ -122,6 +126,7 @@ const bootstrap = async () => {
       `);
       await seedSuperAdmin();
       await seedAdmin();
+      }
     } else {
       console.warn('Starting without a database. API requests will return 503 until MySQL is available.');
     }
@@ -136,5 +141,4 @@ const bootstrap = async () => {
 };
 
 bootstrap();
-
 

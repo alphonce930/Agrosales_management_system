@@ -1,5 +1,5 @@
 import express from 'express';
-import { query } from '../config/db.js';
+import { query, isPostgresDatabase } from '../config/db.js';
 import { protect, authorize } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -11,19 +11,26 @@ const scopeParams = (req) => req.user.role === 'staff' ? [req.user.id] : [];
 router.get('/dashboard', async (req, res) => {
   const where = scope(req);
   const params = scopeParams(req);
+  const monthName = isPostgresDatabase ? "TO_CHAR(s.sale_date, 'Mon')" : "DATE_FORMAT(s.sale_date, '%b')";
+  const monthGroup = isPostgresDatabase
+    ? "DATE_TRUNC('month', s.sale_date), TO_CHAR(s.sale_date, 'Mon')"
+    : "YEAR(s.sale_date), MONTH(s.sale_date), DATE_FORMAT(s.sale_date, '%b')";
+  const monthOrder = isPostgresDatabase ? "DATE_TRUNC('month', s.sale_date)" : 'YEAR(s.sale_date), MONTH(s.sale_date)';
   const [totals, monthly, products, payments, debt, staffPerformance] = await Promise.all([
     query(`SELECT COUNT(*) AS total_sales, COALESCE(SUM(s.total_amount), 0) AS total_sales_value, COALESCE(SUM(CASE WHEN s.payment_type = 'cash' THEN s.total_amount ELSE 0 END), 0) AS total_cash_sales, COALESCE(SUM(CASE WHEN s.payment_type = 'lending' THEN s.total_amount ELSE 0 END), 0) AS total_lending, COALESCE(SUM(s.balance), 0) AS outstanding_debt, COALESCE(SUM(s.amount_paid), 0) AS total_payments FROM sales s${where}`, params),
-    query(`SELECT DATE_FORMAT(s.sale_date, '%b') AS name, COALESCE(SUM(s.total_amount), 0) AS value FROM sales s${where} GROUP BY YEAR(s.sale_date), MONTH(s.sale_date), DATE_FORMAT(s.sale_date, '%b') ORDER BY YEAR(s.sale_date), MONTH(s.sale_date)`, params),
+    query(`SELECT ${monthName} AS name, COALESCE(SUM(s.total_amount), 0) AS value FROM sales s${where} GROUP BY ${monthGroup} ORDER BY ${monthOrder}`, params),
     query(`SELECT p.name, COALESCE(SUM(si.quantity), 0) AS sales FROM sale_items si JOIN products p ON p.id = si.product_id JOIN sales s ON s.id = si.sale_id${where} GROUP BY p.id, p.name ORDER BY sales DESC LIMIT 6`, params),
     query(`SELECT s.payment_type AS name, COUNT(*) AS value FROM sales s${where} GROUP BY s.payment_type`, params),
-    query(`SELECT DATE_FORMAT(s.sale_date, '%b') AS name, COALESCE(SUM(s.total_amount), 0) AS total, COALESCE(SUM(s.amount_paid), 0) AS paid, COALESCE(SUM(s.balance), 0) AS outstanding FROM sales s WHERE s.payment_type = 'lending'${req.user.role === 'staff' ? ' AND s.staff_id = ?' : ''} GROUP BY YEAR(s.sale_date), MONTH(s.sale_date), DATE_FORMAT(s.sale_date, '%b') ORDER BY YEAR(s.sale_date), MONTH(s.sale_date)`, params),
+    query(`SELECT ${monthName} AS name, COALESCE(SUM(s.total_amount), 0) AS total, COALESCE(SUM(s.amount_paid), 0) AS paid, COALESCE(SUM(s.balance), 0) AS outstanding FROM sales s WHERE s.payment_type = 'lending'${req.user.role === 'staff' ? ' AND s.staff_id = ?' : ''} GROUP BY ${monthGroup} ORDER BY ${monthOrder}`, params),
     req.user.role === 'admin'
       ? query(`SELECT u.full_name AS name, COALESCE(SUM(s.total_amount), 0) AS sales FROM sales s JOIN users u ON u.id = s.staff_id GROUP BY u.id, u.full_name ORDER BY sales DESC LIMIT 6`)
       : Promise.resolve([])
   ]);
 
   const userCounts = req.user.role === 'admin'
-    ? await query("SELECT COUNT(*) AS total_staff, SUM(status = 'verified') AS verified_staff, SUM(status = 'pending') AS pending_staff FROM users WHERE role = 'staff'")
+    ? await query(isPostgresDatabase
+      ? "SELECT COUNT(*) AS total_staff, COUNT(*) FILTER (WHERE status = 'verified') AS verified_staff, COUNT(*) FILTER (WHERE status = 'pending') AS pending_staff FROM users WHERE role = 'staff'"
+      : "SELECT COUNT(*) AS total_staff, SUM(status = 'verified') AS verified_staff, SUM(status = 'pending') AS pending_staff FROM users WHERE role = 'staff'")
     : [{ total_staff: 0, verified_staff: 0, pending_staff: 0 }];
   const productCount = await query('SELECT COUNT(*) AS total_products FROM products');
   const customerCount = await query(

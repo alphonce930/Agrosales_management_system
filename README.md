@@ -41,6 +41,22 @@ The application now returns a clear database-unavailable response instead of sil
 
 For an existing populated database, run `backend/database/performance_migration.sql` once to add the query indexes without recreating tables.
 
+### Deploy with Vercel and Neon
+
+The production deployment uses two Vercel projects:
+
+1. Create a Neon PostgreSQL project and copy its **pooled** connection string.
+2. In the Neon SQL editor, run [`backend/database/schema.neon.sql`](backend/database/schema.neon.sql).
+3. Deploy the backend as a Vercel project with the repository root set to `backend`.
+   Add `DATABASE_URL` (the Neon pooled URL), `JWT_SECRET`, `FRONTEND_URL` (the deployed frontend URL),
+   `GOOGLE_CLIENT_ID`, and `GOOGLE_CLIENT_SECRET` as Vercel environment variables.
+4. Deploy the frontend as a second Vercel project with the repository root set to `frontend`.
+   Add `VITE_API_URL=https://<backend-project>.vercel.app/api` and `VITE_GOOGLE_CLIENT_ID`.
+5. Add the frontend production URL to Google Cloud's authorized JavaScript origins.
+
+Do not commit either `.env` file. Configure variables for Production (and Preview if needed).
+The pooled Neon URL is recommended because Vercel functions are short-lived.
+
 ### 4. Configure Google Cloud
 
 1. Create or select a project in Google Cloud Console.

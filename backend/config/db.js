@@ -1,9 +1,12 @@
 import mysql from 'mysql2/promise';
+import pg from 'pg';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-const pool = mysql.createPool({
+const usePostgres = Boolean(process.env.DATABASE_URL?.startsWith('postgres'));
+export const isPostgresDatabase = usePostgres;
+const mysqlPool = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
   user: process.env.DB_USER || 'root',
   password: process.env.DB_PASSWORD || '',
@@ -18,6 +21,13 @@ const pool = mysql.createPool({
   keepAliveInitialDelay: 0,
   connectTimeout: Number(process.env.DB_CONNECT_TIMEOUT_MS) || 5000
 });
+const postgresPool = usePostgres ? new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+  max: Number(process.env.DB_CONNECTION_LIMIT) || 10,
+  connectionTimeoutMillis: Number(process.env.DB_CONNECT_TIMEOUT_MS) || 5000,
+  idleTimeoutMillis: Number(process.env.DB_IDLE_TIMEOUT_MS) || 60000
+}) : null;
 
 const allowMemoryFallback = process.env.ALLOW_MEMORY_DB === 'true';
 let databaseUnavailableUntil = 0;
@@ -25,7 +35,7 @@ const databaseRetryDelay = Number(process.env.DB_RETRY_DELAY_MS) || 30000;
 
 const isConnectionError = (error) => [
   'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'PROTOCOL_CONNECTION_LOST',
-  'ER_ACCESS_DENIED_ERROR', 'ER_BAD_DB_ERROR'
+  'ER_ACCESS_DENIED_ERROR', 'ER_BAD_DB_ERROR', '08001', '08006', '57P01'
 ].includes(error?.code);
 
 const unavailableError = () => {
@@ -270,8 +280,15 @@ export const query = async (sql, params = []) => {
   }
 
   try {
-    const [rows] = await pool.query(sql, params);
-    return rows;
+    if (!usePostgres) {
+      const [rows] = await mysqlPool.query(sql, params);
+      return rows;
+    }
+
+    const result = await postgresQuery(sql, params);
+    return result.command === 'SELECT'
+      ? result.rows
+      : { insertId: result.rows[0]?.id, affectedRows: result.rowCount };
   } catch (error) {
     if (!isConnectionError(error)) throw error;
     databaseUnavailableUntil = Date.now() + databaseRetryDelay;
@@ -284,7 +301,19 @@ export const query = async (sql, params = []) => {
 export const getConnection = async () => {
   if (Date.now() < databaseUnavailableUntil) throw unavailableError();
   try {
-    return await pool.getConnection();
+    if (!usePostgres) return await mysqlPool.getConnection();
+    const client = await postgresPool.connect();
+    return {
+      query: async (sql, params = []) => {
+        const result = await postgresQuery(sql, params, client);
+        if (result.command === 'SELECT') return [result.rows, []];
+        return [{ insertId: result.rows[0]?.id, affectedRows: result.rowCount }, []];
+      },
+      beginTransaction: () => client.query('BEGIN'),
+      commit: () => client.query('COMMIT'),
+      rollback: () => client.query('ROLLBACK'),
+      release: () => client.release()
+    };
   } catch (error) {
     if (isConnectionError(error)) {
       databaseUnavailableUntil = Date.now() + databaseRetryDelay;
@@ -296,7 +325,7 @@ export const getConnection = async () => {
 
 export async function initializeDatabase() {
   try {
-    await pool.query('SELECT 1');
+    await (usePostgres ? postgresPool.query('SELECT 1') : mysqlPool.query('SELECT 1'));
     console.log('Database initialized successfully');
     return true;
   } catch (error) {
@@ -307,9 +336,20 @@ export async function initializeDatabase() {
       await ensureFallbackSeed();
       return false;
     }
-    console.error('MySQL is not available. Configure DB_* variables and apply backend/database/schema.sql.');
+    console.error(`${usePostgres ? 'PostgreSQL' : 'MySQL'} is not available. Configure the database variables and apply the matching schema.`);
     return false;
   }
 }
 
-export default pool;
+const postgresQuery = async (sql, params, client = postgresPool) => {
+  let parameterIndex = 0;
+  let postgresSql = sql.replace(/\?/g, () => `$${++parameterIndex}`);
+  postgresSql = postgresSql.replace(/\bNOW\(\)/gi, 'CURRENT_TIMESTAMP');
+
+  if (/^\s*INSERT\s+INTO/i.test(postgresSql) && !/\bRETURNING\b/i.test(postgresSql)) {
+    postgresSql += ' RETURNING id';
+  }
+  return client.query(postgresSql, params);
+};
+
+export default usePostgres ? postgresPool : mysqlPool;
