@@ -43,6 +43,8 @@ For an existing populated database, run `backend/database/performance_migration.
 
 ### Deploy with Vercel and Neon
 
+See [`DEPLOYMENT.md`](DEPLOYMENT.md) for the saved deployment handoff and current GitHub branch status.
+
 The production deployment uses two Vercel projects:
 
 1. Create a Neon PostgreSQL project and copy its **pooled** connection string.
