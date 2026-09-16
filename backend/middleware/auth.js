@@ -10,7 +10,8 @@ export const protect = async (req, res, next) => {
     }
 
     const token = authHeader.split(' ')[1];
-    decoded = jwt.verify(token, process.env.JWT_SECRET || 'golden-agro-secret');
+    if (!token || !process.env.JWT_SECRET) throw new Error('Invalid session.');
+    decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
   } catch (error) {
     return res.status(401).json({ message: 'Your session has expired. Please sign in again.' });
   }

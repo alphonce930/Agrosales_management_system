@@ -2,8 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { Filter, Plus, Search, Trash2 } from 'lucide-react';
 import api from '../services/api';
 
-const emptyItem = () => ({ product_id: '', quantity: 1 });
+const emptyItem = () => ({ product_id: '', unit: 'single', quantity: 1 });
 const money = (value) => `TZS ${Number(value || 0).toLocaleString()}`;
+const unitLabels = { single: 'Single', dozen: 'Dozen', box: 'Box' };
+const piecesFor = (product, quantity, unit) => {
+  const multiplier = unit === 'dozen' ? 12 : unit === 'box' ? Number(product?.pieces_per_box || 0) : 1;
+  return Number(quantity || 0) * multiplier;
+};
 
 export default function StaffSalesPage() {
   const [sales, setSales] = useState([]);
@@ -31,7 +36,8 @@ export default function StaffSalesPage() {
 
   const items = useMemo(() => form.items.map((item) => {
     const product = products.find((entry) => String(entry.id) === String(item.product_id));
-    return { ...item, product, subtotal: product ? Number(product.selling_price) * Number(item.quantity || 0) : 0 };
+    const baseQuantity = product ? piecesFor(product, item.quantity, item.unit) : 0;
+    return { ...item, product, baseQuantity, subtotal: product ? Number(product.selling_price) * baseQuantity : 0 };
   }), [form.items, products]);
   const total = items.reduce((sum, item) => sum + item.subtotal, 0);
   const filteredSales = sales.filter((sale) => {
@@ -53,7 +59,7 @@ export default function StaffSalesPage() {
     try {
       await api.post('/sales', {
         customer_id: Number(form.customer_id),
-        products: validItems.map((item) => ({ product_id: Number(item.product_id), quantity: Number(item.quantity) })),
+        products: validItems.map((item) => ({ product_id: Number(item.product_id), quantity: Number(item.quantity), unit: item.unit })),
         payment_type: form.payment_type,
         amount_paid: form.amount_paid === '' ? 0 : Number(form.amount_paid),
         notes: form.notes
@@ -90,10 +96,11 @@ export default function StaffSalesPage() {
           <div className="text-sm font-semibold text-slate-700">Products from system inventory</div>
           {form.items.map((item, index) => {
             const selected = items[index];
-            return <div key={index} className="grid gap-3 md:grid-cols-[1fr_140px_150px_auto] md:items-center">
-              <select value={item.product_id} onChange={(event) => changeItem(index, 'product_id', event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 outline-none focus:border-brand-deep" required><option value="">Select system product</option>{products.map((product) => <option key={product.id} value={product.id}>{product.name} — {money(product.selling_price)} ({product.quantity} in stock)</option>)}</select>
-              <input type="number" min="1" max={selected?.product?.quantity || undefined} value={item.quantity} onChange={(event) => changeItem(index, 'quantity', event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 outline-none focus:border-brand-deep" />
-              <div className="px-2 text-sm font-semibold text-slate-700">{money(selected?.subtotal)}</div>
+            return <div key={index} className="grid gap-3 md:grid-cols-[minmax(0,1fr)_130px_110px_minmax(180px,0.75fr)_auto] md:items-center">
+              <select value={item.product_id} onChange={(event) => changeItem(index, 'product_id', event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 outline-none focus:border-brand-deep" required><option value="">Select system product</option>{products.map((product) => <option key={product.id} value={product.id}>{product.name} — {money(product.selling_price)} / piece ({product.quantity} pieces in stock)</option>)}</select>
+              <select value={item.unit} onChange={(event) => changeItem(index, 'unit', event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 outline-none focus:border-brand-deep" aria-label="Selling unit"><option value="single">Single</option><option value="dozen">Dozen</option><option value="box">Box</option></select>
+              <input type="number" min="1" max={selected?.product ? Math.floor(Number(selected.product.quantity) / (item.unit === 'dozen' ? 12 : item.unit === 'box' ? Number(selected.product.pieces_per_box || 0) : 1)) : undefined} value={item.quantity} onChange={(event) => changeItem(index, 'quantity', event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 outline-none focus:border-brand-deep" aria-label="Quantity" />
+              <div className="px-2 text-sm text-slate-700"><div className="font-semibold">{money(selected?.subtotal)}</div>{selected?.product && <div className="mt-0.5 text-xs font-normal text-slate-500">{item.quantity} {unitLabels[item.unit]}{Number(item.quantity) === 1 ? '' : 's'} = {selected.baseQuantity} pieces</div>}</div>
               <button type="button" disabled={form.items.length === 1} onClick={() => setForm((current) => ({ ...current, items: current.items.filter((_, itemIndex) => itemIndex !== index) }))} className="rounded-lg p-2 text-rose-700 hover:bg-rose-100 disabled:opacity-30" aria-label="Remove product"><Trash2 size={18} /></button>
             </div>;
           })}

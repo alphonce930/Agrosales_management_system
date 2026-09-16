@@ -97,6 +97,9 @@ const seedSuperAdmin = async () => {
 
 const bootstrap = async () => {
   try {
+    if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 16) {
+      throw new Error('JWT_SECRET must be set to a random value of at least 16 characters.');
+    }
     const databaseReady = await initializeDatabase();
     if (databaseReady || process.env.ALLOW_MEMORY_DB === 'true') {
       // Existing installations may predate Google sign-in support. Add these
@@ -109,6 +112,10 @@ const bootstrap = async () => {
       await ensureColumn('customers', 'created_by', 'INT NULL AFTER notes');
       await ensureIndex('customers', 'idx_customers_created_by', '`created_by`');
       await ensureColumn('receipts', 'notes', 'TEXT NULL AFTER staff_id');
+      await ensureColumn('products', 'pieces_per_box', 'INT NOT NULL DEFAULT 1 AFTER selling_price');
+      await ensureColumn('sale_items', 'unit', "ENUM('single','dozen','box') NOT NULL DEFAULT 'single' AFTER quantity");
+      await ensureColumn('sale_items', 'base_quantity', 'INT NOT NULL DEFAULT 0 AFTER unit');
+      await query('UPDATE sale_items SET base_quantity = quantity WHERE base_quantity = 0');
       await query(`
         UPDATE customers c
         SET created_by = (
@@ -120,8 +127,10 @@ const bootstrap = async () => {
         )
         WHERE c.created_by IS NULL
       `);
-      await seedSuperAdmin();
-      await seedAdmin();
+      if (process.env.NODE_ENV !== 'production' && process.env.SEED_DEFAULT_USERS === 'true') {
+        await seedSuperAdmin();
+        await seedAdmin();
+      }
     } else {
       console.warn('Starting without a database. API requests will return 503 until MySQL is available.');
     }

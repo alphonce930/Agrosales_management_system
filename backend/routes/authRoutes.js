@@ -1,11 +1,11 @@
-import express from 'express';
-import crypto from 'node:crypto';
-import rateLimit from 'express-rate-limit';
-import { OAuth2Client } from 'google-auth-library';
-import dotenv from 'dotenv';
-import { query } from '../config/db.js';
-import { hashPassword, comparePassword, signToken } from '../utils/helpers.js';
-import { protect } from '../middleware/auth.js';
+import express from "express";
+import crypto from "node:crypto";
+import rateLimit from "express-rate-limit";
+import { OAuth2Client } from "google-auth-library";
+import dotenv from "dotenv";
+import { query } from "../config/db.js";
+import { hashPassword, comparePassword, signToken } from "../utils/helpers.js";
+import { protect } from "../middleware/auth.js";
 
 dotenv.config();
 
@@ -13,10 +13,12 @@ const router = express.Router();
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 30,
+  max: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { message: 'Too many authentication attempts. Please try again later.' }
+  message: {
+    message: "Too many authentication attempts. Please try again later.",
+  },
 });
 
 const safeUser = (user) => ({
@@ -27,156 +29,319 @@ const safeUser = (user) => ({
   phone: user.phone,
   location: user.location,
   profile_picture: user.profile_picture || null,
-  auth_provider: user.auth_provider || 'local',
+  auth_provider: user.auth_provider || "local",
   role: user.role,
   status: user.status,
-  created_at: user.created_at
+  created_at: user.created_at,
 });
 
 const createUsername = async (email) => {
-  const base = email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '').slice(0, 40) || 'googleuser';
+  const base =
+    email
+      .split("@")[0]
+      .replace(/[^a-zA-Z0-9_]/g, "")
+      .slice(0, 40) || "googleuser";
   let username = base;
   let suffix = 1;
-  while ((await query('SELECT id FROM users WHERE username = ?', [username])).length) {
+  while (
+    (await query("SELECT id FROM users WHERE username = ?", [username])).length
+  ) {
     username = `${base}${suffix}`;
     suffix += 1;
   }
   return username;
 };
 
-router.post('/register', authLimiter, async (req, res) => {
+router.post("/register", authLimiter, async (req, res) => {
   try {
-    const { full_name, username, email, phone, location, password, confirmPassword } = req.body;
+    const {
+      full_name,
+      username,
+      email,
+      phone,
+      location,
+      password,
+      confirmPassword,
+    } = req.body;
 
     if (!full_name || !username || !email || !phone || !location || !password) {
-      return res.status(400).json({ message: 'All required fields must be filled.' });
+      return res
+        .status(400)
+        .json({ message: "All required fields must be filled." });
     }
 
-    if (password.length < 6) {
-      return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+    if (
+      typeof password !== "string" ||
+      password.length < 8 ||
+      !/[a-z]/.test(password) ||
+      !/[A-Z]/.test(password) ||
+      !/\d/.test(password) ||
+      !/[!@#$%^&*]/.test(password)
+    ) {
+      return res
+        .status(400)
+        .json({
+          message:
+            "Password must be at least 8 characters and contain uppercase, lowercase, a number, and a special character.",
+        });
     }
 
     if (password !== confirmPassword) {
-      return res.status(400).json({ message: 'Passwords do not match.' });
+      return res.status(400).json({ message: "Passwords do not match." });
     }
 
-    const existing = await query('SELECT id FROM users WHERE email = ? OR username = ?', [email, username]);
+    const existing = await query(
+      "SELECT id FROM users WHERE email = ? OR username = ?",
+      [email, username],
+    );
     if (existing.length) {
-      return res.status(409).json({ message: 'User with this email or username already exists.' });
+      return res
+        .status(409)
+        .json({ message: "User with this email or username already exists." });
     }
 
     const passwordHash = await hashPassword(password);
     const result = await query(
-      'INSERT INTO users (full_name, username, email, phone, location, password, role, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [full_name, username, email, phone, location, passwordHash, 'staff', 'pending']
+      "INSERT INTO users (full_name, username, email, phone, location, password, role, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      [
+        full_name,
+        username,
+        email,
+        phone,
+        location,
+        passwordHash,
+        "staff",
+        "pending",
+      ],
     );
 
-    await query('INSERT INTO activity_logs (user_id, action, entity_type, details) VALUES (?, ?, ?, ?)', [result.insertId, 'Staff registered', 'user', 'New staff registration pending verification']);
+    await query(
+      "INSERT INTO activity_logs (user_id, action, entity_type, details) VALUES (?, ?, ?, ?)",
+      [
+        result.insertId,
+        "Staff registered",
+        "user",
+        "New staff registration pending verification",
+      ],
+    );
 
-    return res.status(201).json({ message: 'Registration successful. Awaiting admin verification.' });
+    return res
+      .status(201)
+      .json({
+        message: "Registration successful. Awaiting admin verification.",
+      });
   } catch (error) {
-    return res.status(500).json({ message: error.message || 'Registration failed.' });
+    return res
+      .status(500)
+      .json({ message: error.message || "Registration failed." });
   }
 });
 
-router.post('/login', authLimiter, async (req, res) => {
+router.post("/login", authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ message: 'Email and password are required.' });
+    if (
+      typeof email !== "string" ||
+      typeof password !== "string" ||
+      !email.trim() ||
+      !password
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Email and password are required." });
     }
 
-    const users = await query('SELECT * FROM users WHERE email = ? OR username = ?', [email, email]);
+    const identity = email.trim().toLowerCase();
+    const users = await query(
+      "SELECT * FROM users WHERE email = ? OR username = ?",
+      [identity, identity],
+    );
     if (!users.length) {
-      return res.status(401).json({ message: 'Invalid credentials.' });
+      return res.status(401).json({ message: "Invalid credentials." });
     }
 
     const user = users[0];
-    if (user.status !== 'verified') {
-      return res.status(403).json({ message: 'Your account is pending or suspended. Please contact the admin.' });
+    if (user.status !== "verified") {
+      return res
+        .status(403)
+        .json({
+          message:
+            "Your account is pending or suspended. Please contact the admin.",
+        });
     }
 
     const match = await comparePassword(password, user.password);
     if (!match) {
-      return res.status(401).json({ message: 'Invalid credentials.' });
+      return res.status(401).json({ message: "Invalid credentials." });
     }
 
-    const token = signToken({ id: user.id, role: user.role, email: user.email });
+    const token = signToken({
+      id: user.id,
+      role: user.role,
+      email: user.email,
+    });
     return res.json({ token, user: safeUser(user) });
   } catch (error) {
-    return res.status(500).json({ message: error.message || 'Login failed.' });
+    return res.status(500).json({ message: error.message || "Login failed." });
   }
 });
 
-router.post('/google', authLimiter, async (req, res) => {
+router.post("/google", authLimiter, async (req, res) => {
   try {
     const { credential } = req.body;
-    if (!credential || !process.env.GOOGLE_CLIENT_ID) {
-      return res.status(400).json({ message: 'Google authentication is not configured.' });
+    if (
+      typeof credential !== "string" ||
+      credential.length > 10000 ||
+      !process.env.GOOGLE_CLIENT_ID
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Google authentication is not configured." });
     }
 
     const ticket = await googleClient.verifyIdToken({
       idToken: credential,
-      audience: process.env.GOOGLE_CLIENT_ID
+      audience: process.env.GOOGLE_CLIENT_ID,
     });
     const payload = ticket.getPayload();
     if (!payload?.sub || !payload.email || payload.email_verified !== true) {
-      return res.status(401).json({ message: 'Google account verification failed.' });
+      return res
+        .status(401)
+        .json({ message: "Google account verification failed." });
     }
 
     const googleId = payload.sub;
     const email = payload.email.trim().toLowerCase();
-    let users = await query('SELECT * FROM users WHERE google_id = ?', [googleId]);
+    let users = await query("SELECT * FROM users WHERE google_id = ?", [
+      googleId,
+    ]);
     let user = users[0];
 
     if (!user) {
-      users = await query('SELECT * FROM users WHERE email = ?', [email]);
+      users = await query("SELECT * FROM users WHERE email = ?", [email]);
       user = users[0];
     }
 
     if (user) {
-      if (user.status === 'suspended') {
-        return res.status(403).json({ message: 'This account has been suspended. Please contact the admin.' });
+      if (user.status !== "verified") {
+        return res
+          .status(403)
+          .json({
+            message:
+              "This account is pending or suspended. Please contact the admin.",
+          });
       }
 
       await query(
-        'UPDATE users SET google_id = ?, profile_picture = ?, auth_provider = ?, status = ? WHERE id = ?',
-        [googleId, payload.picture || user.profile_picture || null, 'google', 'verified', user.id]
+        "UPDATE users SET google_id = ?, profile_picture = ?, auth_provider = ? WHERE id = ?",
+        [
+          googleId,
+          payload.picture || user.profile_picture || null,
+          "google",
+          user.id,
+        ],
       );
-      user = { ...user, google_id: googleId, profile_picture: payload.picture || user.profile_picture || null, auth_provider: 'google', status: 'verified' };
+      user = {
+        ...user,
+        google_id: googleId,
+        profile_picture: payload.picture || user.profile_picture || null,
+        auth_provider: "google",
+        status: "verified",
+      };
     } else {
       const username = await createUsername(email);
-      const passwordHash = await hashPassword(crypto.randomBytes(32).toString('hex'));
+      const passwordHash = await hashPassword(
+        crypto.randomBytes(32).toString("hex"),
+      );
       const result = await query(
         `INSERT INTO users
           (full_name, username, email, phone, location, password, role, status, google_id, profile_picture, auth_provider)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [payload.name || email.split('@')[0], username, email, '', '', passwordHash, 'staff', 'verified', googleId, payload.picture || null, 'google']
+        [
+          payload.name || email.split("@")[0],
+          username,
+          email,
+          "",
+          "",
+          passwordHash,
+          "staff",
+          "verified",
+          googleId,
+          payload.picture || null,
+          "google",
+        ],
       );
-      const created = await query('SELECT * FROM users WHERE id = ?', [result.insertId]);
+      const created = await query("SELECT * FROM users WHERE id = ?", [
+        result.insertId,
+      ]);
       user = created[0] || {
         id: result.insertId,
-        full_name: payload.name || email.split('@')[0],
+        full_name: payload.name || email.split("@")[0],
         username,
         email,
-        role: 'staff',
-        status: 'verified',
+        role: "staff",
+        status: "verified",
         profile_picture: payload.picture || null,
-        auth_provider: 'google'
+        auth_provider: "google",
       };
-      await query('INSERT INTO activity_logs (user_id, action, entity_type, details) VALUES (?, ?, ?, ?)', [user.id, 'Google account created', 'user', 'Account created through Google authentication']);
+      await query(
+        "INSERT INTO activity_logs (user_id, action, entity_type, details) VALUES (?, ?, ?, ?)",
+        [
+          user.id,
+          "Google account created",
+          "user",
+          "Account created through Google authentication",
+        ],
+      );
     }
 
-    const token = signToken({ id: user.id, role: user.role, email: user.email });
+    const token = signToken({
+      id: user.id,
+      role: user.role,
+      email: user.email,
+    });
     return res.json({ token, user: safeUser(user) });
   } catch (error) {
-    console.error('Google authentication failed:', error.message);
-    return res.status(401).json({ message: 'Google authentication failed. Please try again.' });
+    console.error("Google authentication failed:", error.message);
+    return res
+      .status(401)
+      .json({ message: "Google authentication failed. Please try again." });
   }
 });
 
-router.get('/me', protect, async (req, res) => {
+router.get("/me", protect, async (req, res) => {
   return res.json({ user: req.user });
+});
+
+router.put("/profile-picture", protect, async (req, res) => {
+  const { profile_picture } = req.body;
+  const imagePattern =
+    /^data:image\/(jpeg|png|webp|gif);base64,[A-Za-z0-9+/]+=*$/;
+
+  if (
+    typeof profile_picture !== "string" ||
+    !imagePattern.test(profile_picture)
+  ) {
+    return res
+      .status(400)
+      .json({ message: "Please upload a valid JPG, PNG, WEBP, or GIF image." });
+  }
+
+  const encodedImage = profile_picture.split(",")[1];
+  if (Buffer.byteLength(encodedImage, "base64") > 700 * 1024) {
+    return res
+      .status(400)
+      .json({ message: "Profile picture must be smaller than 700 KB." });
+  }
+
+  await query("UPDATE users SET profile_picture = ? WHERE id = ?", [
+    profile_picture,
+    req.user.id,
+  ]);
+  return res.json({
+    message: "Profile picture updated successfully.",
+    user: { ...req.user, profile_picture },
+  });
 });
 
 export default router;

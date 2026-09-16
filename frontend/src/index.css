@@ -35,13 +35,91 @@ input, select, textarea, button {
   @apply bg-brand-gold text-brand-deep px-4 py-2 rounded-xl font-medium hover:opacity-90 transition;
 }
 
+.btn-primary,
+.btn-secondary {
+  @apply inline-flex min-h-11 items-center justify-center whitespace-nowrap;
+}
+
 .page-shell {
   @apply max-w-7xl mx-auto px-4 py-6 sm:px-6;
+}
+
+.logo-stage {
+  animation: logo-stage-in 700ms ease-out both;
+}
+
+.logo-frame {
+  animation: logo-frame-in 900ms 120ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.logo-image {
+  animation: logo-image-settle 1100ms 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes logo-stage-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes logo-frame-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes logo-image-settle {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .logo-stage,
+  .logo-frame,
+  .logo-image {
+    animation: none;
+  }
 }
 
 @media (max-width: 420px) {
   .btn-primary,
   .btn-secondary {
     @apply px-3 text-sm;
+  }
+}
+
+@media (max-width: 767px) {
+  .page-shell {
+    @apply px-4 py-5;
+  }
+
+  .card {
+    @apply rounded-xl;
+  }
+
+  input,
+  select,
+  textarea {
+    max-width: 100%;
+  }
+
+  table {
+    min-width: 620px;
   }
 }

@@ -1,1 +1,0 @@
-This frontend is intentionally scaffolded as a working app shell with route-based navigation and dashboard views. The app connects to the Express API on port 5000 and includes the public landing page, login, registration, admin dashboard, and staff dashboard foundation.

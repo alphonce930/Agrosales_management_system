@@ -17,14 +17,17 @@ router.get('/', async (req, res) => {
 
 router.post('/', authorize('admin', 'staff'), async (req, res) => {
   try {
-    const { product_code, name, description, category_id, unit, quantity, buying_price, selling_price, minimum_stock, status } = req.body;
+    const { product_code, name, description, category_id, unit, quantity, buying_price, selling_price, pieces_per_box, minimum_stock, status } = req.body;
     if (!product_code || !name || !selling_price) {
       return res.status(400).json({ message: 'Product code, name, and selling price are required.' });
     }
 
+    const piecesPerBox = Number(pieces_per_box ?? 1);
+    if (!Number.isInteger(piecesPerBox) || piecesPerBox <= 0) return res.status(400).json({ message: 'Pieces per box must be a whole number greater than zero.' });
+
     const result = await query(
-      'INSERT INTO products (product_code, name, description, category_id, unit, quantity, buying_price, selling_price, minimum_stock, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [product_code, name, description || '', category_id || null, unit || 'kg', quantity || 0, Number(buying_price) || 0, Number(selling_price), Number(minimum_stock) || 0, status || 'active']
+      'INSERT INTO products (product_code, name, description, category_id, unit, quantity, buying_price, selling_price, pieces_per_box, minimum_stock, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [product_code, name, description || '', category_id || null, unit || 'piece', quantity || 0, Number(buying_price) || 0, Number(selling_price), piecesPerBox, Number(minimum_stock) || 0, status || 'active']
     );
 
     await query('INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)', [req.user.id, 'Product added', 'product', result.insertId, `Product ${name} added`]);
@@ -42,10 +45,12 @@ router.get('/:id', async (req, res) => {
 });
 
 router.put('/:id', authorize('admin', 'staff'), async (req, res) => {
-  const { name, description, category_id, unit, quantity, buying_price, selling_price, minimum_stock, status } = req.body;
+  const { name, description, category_id, unit, quantity, buying_price, selling_price, pieces_per_box, minimum_stock, status } = req.body;
+  const piecesPerBox = Number(pieces_per_box ?? 1);
+  if (!Number.isInteger(piecesPerBox) || piecesPerBox <= 0) return res.status(400).json({ message: 'Pieces per box must be a whole number greater than zero.' });
   await query(
-    'UPDATE products SET name = ?, description = ?, category_id = ?, unit = ?, quantity = ?, buying_price = ?, selling_price = ?, minimum_stock = ?, status = ? WHERE id = ?',
-    [name, description || '', category_id || null, unit || 'kg', quantity || 0, Number(buying_price) || 0, Number(selling_price), Number(minimum_stock) || 0, status || 'active', req.params.id]
+    'UPDATE products SET name = ?, description = ?, category_id = ?, unit = ?, quantity = ?, buying_price = ?, selling_price = ?, pieces_per_box = ?, minimum_stock = ?, status = ? WHERE id = ?',
+    [name, description || '', category_id || null, unit || 'piece', quantity || 0, Number(buying_price) || 0, Number(selling_price), piecesPerBox, Number(minimum_stock) || 0, status || 'active', req.params.id]
   );
   return res.json({ message: 'Product updated successfully.' });
 });

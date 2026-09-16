@@ -5,6 +5,42 @@ import { protect, authorize } from '../middleware/auth.js';
 const router = express.Router();
 router.use(protect);
 
+const unitMultipliers = { single: 1, dozen: 12 };
+
+const parseMoneyToCents = (value) => {
+  const normalized = String(value ?? '').trim();
+  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) throw new Error('Payment amounts must have no more than two decimal places.');
+  const [whole, fraction = ''] = normalized.split('.');
+  return BigInt(whole) * 100n + BigInt((fraction + '00').slice(0, 2));
+};
+
+const centsToDecimal = (cents) => `${cents / 100n}.${String(cents % 100n).padStart(2, '0')}`;
+
+// This is deliberately server-side: the browser preview is helpful, but never
+// trusted for price or stock calculations.
+const calculateSale = (product, quantity, unit) => {
+  if (!Number.isInteger(quantity) || quantity <= 0) throw new Error('Each sale quantity must be a whole number greater than zero.');
+  if (!['single', 'dozen', 'box'].includes(unit)) throw new Error('Selling unit must be single, dozen, or box.');
+
+  const piecesPerBox = Number(product.pieces_per_box);
+  const multiplier = unit === 'box'
+    ? (Number.isInteger(piecesPerBox) && piecesPerBox > 0 ? piecesPerBox : null)
+    : unitMultipliers[unit];
+  if (!multiplier) throw new Error(`Product ${product.id} needs a valid pieces-per-box value before it can be sold by box.`);
+
+  const baseQuantity = quantity * multiplier;
+  if (!Number.isSafeInteger(baseQuantity)) throw new Error('Sale quantity is too large.');
+  const unitPriceCents = parseMoneyToCents(product.selling_price);
+  return {
+    quantity,
+    unit,
+    baseQuantity,
+    unitPrice: centsToDecimal(unitPriceCents),
+    subtotal: centsToDecimal(BigInt(baseQuantity) * unitPriceCents),
+    subtotalCents: BigInt(baseQuantity) * unitPriceCents
+  };
+};
+
 const ensureReceiptForSale = async (connection, { saleId, customerId, staffId, receiptNumber }) => {
   const [existing] = await connection.query('SELECT id FROM receipts WHERE sale_id = ? LIMIT 1', [saleId]);
   if (existing.length) return existing[0];
@@ -49,33 +85,46 @@ router.post('/', authorize('admin', 'staff'), async (req, res) => {
       if (!customers.length) throw new Error('You can only create sales for your own customers.');
     }
 
-    const requestedQuantities = new Map();
+    const requestedItems = new Map();
     for (const item of products) {
       const productId = Number(item.product_id);
       const quantity = Number(item.quantity);
       if (!Number.isInteger(productId) || productId <= 0 || !Number.isInteger(quantity) || quantity <= 0) {
         throw new Error('Each sale product and quantity must be valid.');
       }
-      requestedQuantities.set(productId, (requestedQuantities.get(productId) || 0) + quantity);
+      const unit = item.unit || 'single';
+      if (!['single', 'dozen', 'box'].includes(unit)) throw new Error('Selling unit must be single, dozen, or box.');
+      const productItems = requestedItems.get(productId) || [];
+      productItems.push({ quantity, unit });
+      requestedItems.set(productId, productItems);
     }
 
     const saleItems = [];
-    let totalAmount = 0;
-    for (const [productId, quantity] of requestedQuantities) {
-      const productRows = await connection.query('SELECT id, quantity, selling_price FROM products WHERE id = ? FOR UPDATE', [productId]);
+    let totalAmountCents = 0n;
+    for (const [productId, requestedProductItems] of requestedItems) {
+      const productRows = await connection.query('SELECT id, quantity, selling_price, pieces_per_box FROM products WHERE id = ? FOR UPDATE', [productId]);
       const product = productRows[0][0];
       if (!product) throw new Error('Product not found.');
-      if (Number(product.quantity) < quantity) throw new Error(`Insufficient stock for product ${product.id}.`);
-      const subtotal = quantity * Number(product.selling_price);
-      totalAmount += subtotal;
-      saleItems.push({ product, quantity, subtotal });
+      const calculatedItems = requestedProductItems.map((item) => calculateSale(product, item.quantity, item.unit));
+      const baseQuantity = calculatedItems.reduce((sum, item) => sum + item.baseQuantity, 0);
+      if (Number(product.quantity) < baseQuantity) throw new Error(`Insufficient stock for product ${product.id}.`);
+      calculatedItems.forEach((item) => {
+        totalAmountCents += item.subtotalCents;
+        saleItems.push({ product, ...item });
+      });
     }
 
+    const totalAmount = centsToDecimal(totalAmountCents);
+
     const paymentType = payment_type || 'cash';
-    const paidAmount = paymentType === 'cash' && Number(amount_paid) === 0 ? totalAmount : Number(amount_paid);
-    if (!Number.isFinite(paidAmount) || paidAmount < 0 || paidAmount > totalAmount) throw new Error('Payment amount must be between zero and the sale total.');
-    const balance = totalAmount - paidAmount;
-    const status = paymentType === 'cash' ? 'paid' : (balance <= 0 ? 'paid' : 'partially_paid');
+    if (!['cash', 'lending'].includes(paymentType)) throw new Error('Payment type must be cash or lending.');
+    const enteredAmountCents = parseMoneyToCents(amount_paid);
+    const paidAmountCents = paymentType === 'cash' && enteredAmountCents === 0n ? totalAmountCents : enteredAmountCents;
+    if (paidAmountCents > totalAmountCents) throw new Error('Payment amount must be between zero and the sale total.');
+    const balanceCents = totalAmountCents - paidAmountCents;
+    const paidAmount = centsToDecimal(paidAmountCents);
+    const balance = centsToDecimal(balanceCents);
+    const status = paymentType === 'cash' ? 'paid' : (balanceCents === 0n ? 'paid' : (paidAmountCents === 0n ? 'unpaid' : 'partially_paid'));
 
     const saleNumber = `SALE-${Date.now()}`;
     const saleResult = await connection.query(
@@ -87,13 +136,13 @@ router.post('/', authorize('admin', 'staff'), async (req, res) => {
 
     for (const item of saleItems) {
       await connection.query(
-        'INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, subtotal) VALUES (?, ?, ?, ?, ?)',
-        [saleId, item.product.id, item.quantity, item.product.selling_price, item.subtotal]
+        'INSERT INTO sale_items (sale_id, product_id, quantity, unit, base_quantity, unit_price, subtotal) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [saleId, item.product.id, item.quantity, item.unit, item.baseQuantity, item.unitPrice, item.subtotal]
       );
-      await connection.query('UPDATE products SET quantity = quantity - ? WHERE id = ?', [item.quantity, item.product.id]);
+      await connection.query('UPDATE products SET quantity = quantity - ? WHERE id = ?', [item.baseQuantity, item.product.id]);
     }
 
-    if (paidAmount > 0) {
+    if (paidAmountCents > 0n) {
       await connection.query(
         'INSERT INTO payments (payment_number, customer_id, sale_id, amount, payment_method, staff_id, notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
         ['PAY-' + Date.now(), customer_id, saleId, paidAmount, 'cash', req.user.id, notes || '']

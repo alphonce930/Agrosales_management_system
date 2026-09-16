@@ -13,15 +13,14 @@ import StaffLendingPage from './pages/StaffLendingPage';
 import StaffPaymentsPage from './pages/StaffPaymentsPage';
 import StaffReceiptsPage from './pages/StaffReceiptsPage';
 import StaffReportsPage from './pages/StaffReportsPage';
-import StaffProfilePage from './pages/StaffProfilePage';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminCustomersPage from './pages/AdminCustomersPage';
 import AdminProductsPage from './pages/AdminProductsPage';
 import AdminSalesPage from './pages/AdminSalesPage';
 import AdminPaymentsPage from './pages/AdminPaymentsPage';
 import AdminReportsPage from './pages/AdminReportsPage';
-import AdminProfilePage from './pages/AdminProfilePage';
 import SuperAdminUsersPage from './pages/SuperAdminUsersPage';
+import ProfilePage from './pages/ProfilePage';
 
 const ProtectedRoute = ({ children, allowedRoles = [] }) => {
   const { user, loading } = useAuth();
@@ -46,7 +45,7 @@ export default function App() {
 
       <Route path="/super-admin" element={<ProtectedRoute allowedRoles={['super_admin']}><DashboardLayout role="super_admin" /></ProtectedRoute>}>
         <Route index element={<SuperAdminUsersPage />} />
-        <Route path="profile" element={<AdminProfilePage />} />
+        <Route path="profile" element={<ProfilePage />} />
       </Route>
 
       <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><DashboardLayout role="admin" /></ProtectedRoute>}>
@@ -56,7 +55,7 @@ export default function App() {
         <Route path="sales" element={<AdminSalesPage />} />
         <Route path="payments" element={<AdminPaymentsPage />} />
         <Route path="reports" element={<AdminReportsPage />} />
-        <Route path="profile" element={<AdminProfilePage />} />
+        <Route path="profile" element={<ProfilePage />} />
       </Route>
 
       <Route path="/staff" element={<ProtectedRoute allowedRoles={['staff']}><DashboardLayout role="staff" /></ProtectedRoute>}>
@@ -68,7 +67,7 @@ export default function App() {
         <Route path="payments" element={<StaffPaymentsPage />} />
         <Route path="receipts" element={<StaffReceiptsPage />} />
         <Route path="reports" element={<StaffReportsPage />} />
-        <Route path="profile" element={<StaffProfilePage />} />
+        <Route path="profile" element={<ProfilePage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

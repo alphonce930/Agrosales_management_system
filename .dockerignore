@@ -1,0 +1,9 @@
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+.git
+.gitignore
+backend/uploads
+npm-debug.log*
+.DS_Store

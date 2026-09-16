@@ -5,7 +5,7 @@ import api from '../services/api';
 export default function AdminProductsPage() {
   const [products, setProducts] = useState([]);
   const [search, setSearch] = useState('');
-  const [form, setForm] = useState({ code: '', name: '', stock: 0, price: '', status: 'active' });
+  const [form, setForm] = useState({ code: '', name: '', stock: 0, price: '', piecesPerBox: 1, status: 'active' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -48,9 +48,10 @@ export default function AdminProductsPage() {
         name: form.name,
         quantity: form.stock,
         selling_price: Number(form.price),
+        pieces_per_box: Number(form.piecesPerBox),
         status: form.status
       });
-      setForm({ code: '', name: '', stock: 0, price: '', status: 'active' });
+      setForm({ code: '', name: '', stock: 0, price: '', piecesPerBox: 1, status: 'active' });
       await fetchProducts();
     } catch (err) {
       setError(err.response?.data?.message || 'Unable to save product to the database.');
@@ -67,6 +68,7 @@ export default function AdminProductsPage() {
         name: product.name,
         quantity: Number(product.quantity),
         selling_price: Number(product.selling_price),
+        pieces_per_box: Number(product.pieces_per_box) || 1,
         minimum_stock: Number(product.minimum_stock) || 0,
         status: product.status
       });
@@ -115,7 +117,7 @@ export default function AdminProductsPage() {
           <PackagePlus size={18} className="text-brand-deep" /> Add product
         </div>
 
-        <form className="grid gap-4 md:grid-cols-2 xl:grid-cols-5" onSubmit={addProduct}>
+        <form className="grid gap-4 md:grid-cols-2 xl:grid-cols-6" onSubmit={addProduct}>
           <input
             value={form.code}
             onChange={(e) => setForm({ ...form, code: e.target.value })}
@@ -139,7 +141,15 @@ export default function AdminProductsPage() {
             type="number"
             value={form.price}
             onChange={(e) => setForm({ ...form, price: e.target.value })}
-            placeholder="Selling price"
+            placeholder="Single-piece price"
+            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 outline-none focus:border-brand-deep"
+          />
+          <input
+            type="number"
+            min="1"
+            value={form.piecesPerBox}
+            onChange={(e) => setForm({ ...form, piecesPerBox: e.target.value })}
+            placeholder="Pieces per box"
             className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 outline-none focus:border-brand-deep"
           />
           <div className="flex gap-2">
@@ -168,6 +178,7 @@ export default function AdminProductsPage() {
                 <th className="px-5 py-3 font-medium">Product</th>
                 <th className="px-5 py-3 font-medium">Stock</th>
                 <th className="px-5 py-3 font-medium">Price</th>
+                <th className="px-5 py-3 font-medium">Pieces / box</th>
                 <th className="px-5 py-3 font-medium">Status</th>
                 <th className="px-5 py-3 font-medium">Action</th>
               </tr>
@@ -175,7 +186,7 @@ export default function AdminProductsPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="6" className="px-5 py-8 text-center text-slate-500">Loading products...</td>
+                  <td colSpan="7" className="px-5 py-8 text-center text-slate-500">Loading products...</td>
                 </tr>
               ) : filteredProducts.length ? filteredProducts.map((product) => (
                 <tr key={product.id} className="border-t border-slate-200">
@@ -201,6 +212,15 @@ export default function AdminProductsPage() {
                       value={product.selling_price}
                       onChange={(event) => setProducts((current) => current.map((item) => item.id === product.id ? { ...item, selling_price: event.target.value } : item))}
                       className="w-32 rounded-lg border border-slate-200 px-2 py-1.5 font-semibold text-slate-900 outline-none focus:border-brand-deep"
+                    />
+                  </td>
+                  <td className="px-5 py-4">
+                    <input
+                      type="number"
+                      min="1"
+                      value={product.pieces_per_box || 1}
+                      onChange={(event) => setProducts((current) => current.map((item) => item.id === product.id ? { ...item, pieces_per_box: event.target.value } : item))}
+                      className="w-24 rounded-lg border border-slate-200 px-2 py-1.5 text-slate-700 outline-none focus:border-brand-deep"
                     />
                   </td>
                   <td className="px-5 py-4">
@@ -236,7 +256,7 @@ export default function AdminProductsPage() {
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan="6" className="px-5 py-8 text-center text-slate-500">No products found.</td>
+                  <td colSpan="7" className="px-5 py-8 text-center text-slate-500">No products found.</td>
                 </tr>
               )}
             </tbody>
