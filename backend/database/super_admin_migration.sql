@@ -1,8 +1,8 @@
-USE golden_agrochemicals;
+ALTER TABLE users
+  ALTER COLUMN role TYPE TEXT;
 
 ALTER TABLE users
-  MODIFY role ENUM('super_admin','admin','staff') NOT NULL DEFAULT 'staff';
+  ALTER COLUMN role SET DEFAULT 'staff';
 
-INSERT INTO users (full_name, username, email, phone, location, password, role, status)
-SELECT 'Super Administrator', 'superadmin', 'superadmin@goldenagro.com', '+255700000000', 'Dar es Salaam', '$2a$10$DjDxTLtGZWgOJQJktOf3re7VaZceNmVm0WUmxBhLp2io8ybmHm1s6', 'super_admin', 'verified'
-WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'superadmin' OR email = 'superadmin@goldenagro.com');
+ALTER TABLE users
+  ADD CONSTRAINT IF NOT EXISTS users_role_check CHECK (role IN ('super_admin','admin','staff'));

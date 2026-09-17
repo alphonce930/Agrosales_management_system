@@ -1,8 +1,7 @@
-
-import app from './app.js';
-import dotenv from 'dotenv';
-import { initializeDatabase, query } from './config/db.js';
-import { hashPassword } from './utils/helpers.js';
+import app from "./app.js";
+import dotenv from "dotenv";
+import { initializeDatabase, query } from "./config/db.js";
+import { hashPassword } from "./utils/helpers.js";
 
 dotenv.config();
 
@@ -12,12 +11,12 @@ const ensureColumn = async (table, column, definition) => {
   const rows = await query(
     `SELECT COUNT(*) AS column_count
      FROM information_schema.columns
-     WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?`,
-    [table, column]
+     WHERE table_schema = current_schema() AND table_name = $1 AND column_name = $2`,
+    [table, column],
   );
 
-  if (!Number(rows[0]?.column_count)) {
-    await query(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${definition}`);
+  if (!Number(rows[0]?.column_count ?? 0)) {
+    await query(`ALTER TABLE "${table}" ADD COLUMN "${column}" ${definition}`);
     console.log(`Added ${table}.${column} for database compatibility.`);
   }
 };
@@ -25,97 +24,111 @@ const ensureColumn = async (table, column, definition) => {
 const ensureIndex = async (table, index, columns) => {
   const rows = await query(
     `SELECT COUNT(*) AS index_count
-     FROM information_schema.statistics
-     WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?`,
-    [table, index]
+     FROM pg_indexes
+     WHERE schemaname = current_schema() AND tablename = $1 AND indexname = $2`,
+    [table, index],
   );
 
-  if (!Number(rows[0]?.index_count)) {
-    await query(`ALTER TABLE \`${table}\` ADD INDEX \`${index}\` (${columns})`);
+  if (!Number(rows[0]?.index_count ?? 0)) {
+    await query(
+      `CREATE INDEX IF NOT EXISTS "${index}" ON "${table}" (${columns})`,
+    );
     console.log(`Added ${index} index for database compatibility.`);
   }
 };
 
-const seedAdmin = async () => {
-  const rows = await query(
-    'SELECT id, username, email FROM users WHERE username = ? OR email = ?',
-    ['admin', 'admin@goldenagro.com']
-  );
+const getAdminUserConfig = () => {
+  const email = (process.env.ADMIN_EMAIL || "").trim();
+  const password = process.env.ADMIN_PASSWORD || "";
+  return { email, password };
+};
 
-  if (rows.length > 0) {
-    console.log('Admin account already exists. Skipping admin creation.');
+const seedAdmin = async () => {
+  const { email, password } = getAdminUserConfig();
+
+  if (!email || !password) {
+    console.warn(
+      "Admin bootstrap is skipped until ADMIN_EMAIL and ADMIN_PASSWORD are configured.",
+    );
     return;
   }
 
-  const passwordHash = await hashPassword('Admin@123');
-
-  await query(
-    `INSERT INTO users
-      (full_name, username, email, phone, location, password, role, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      'System Administrator',
-      'admin',
-      'admin@goldenagro.com',
-      '+255700000001',
-      'Dar es Salaam',
-      passwordHash,
-      'admin',
-      'verified'
-    ]
-  );
-
-  console.log('Admin account created successfully.');
-};
-
-const seedSuperAdmin = async () => {
   const rows = await query(
-    'SELECT id FROM users WHERE username = ? OR email = ?',
-    ['superadmin', 'superadmin@goldenagro.com']
+    "SELECT id, username, email FROM users WHERE username = $1 OR email = $2",
+    [email.split("@")[0], email],
   );
 
-  if (rows.length > 0) return;
+  if (rows.length > 0) {
+    console.log("Admin account already exists. Skipping admin creation.");
+    return;
+  }
 
-  const passwordHash = await hashPassword('SuperAdmin@123');
+  const username = (
+    email.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "") || "admin"
+  ).slice(0, 40);
+  const passwordHash = await hashPassword(password);
+
   await query(
     `INSERT INTO users
       (full_name, username, email, phone, location, password, role, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
     [
-      'Super Administrator',
-      'superadmin',
-      'superadmin@goldenagro.com',
-      '+255700000000',
-      'Dar es Salaam',
+      "System Administrator",
+      username,
+      email,
+      "+255700000001",
+      "Dar es Salaam",
       passwordHash,
-      'super_admin',
-      'verified'
-    ]
+      "admin",
+      "verified",
+    ],
   );
-  console.log('Super admin account created successfully.');
+
+  console.log("Admin account created successfully.");
 };
 
 const bootstrap = async () => {
   try {
     if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 16) {
-      throw new Error('JWT_SECRET must be set to a random value of at least 16 characters.');
+      throw new Error(
+        "JWT_SECRET must be set to a random value of at least 16 characters.",
+      );
     }
+
     const databaseReady = await initializeDatabase();
-    if (databaseReady || process.env.ALLOW_MEMORY_DB === 'true') {
-      // Existing installations may predate Google sign-in support. Add these
-      // columns before auth middleware can select them.
-      await ensureColumn('users', 'google_id', 'VARCHAR(255) NULL UNIQUE AFTER password');
-      await ensureColumn('users', 'profile_picture', 'TEXT NULL AFTER google_id');
-      await ensureColumn('users', 'auth_provider', "ENUM('local','google') NOT NULL DEFAULT 'local' AFTER profile_picture");
-      await query("ALTER TABLE users MODIFY role ENUM('super_admin','admin','staff') NOT NULL DEFAULT 'staff'");
-      await ensureColumn('customers', 'initial_amount', 'DECIMAL(12,2) NOT NULL DEFAULT 0 AFTER customer_type');
-      await ensureColumn('customers', 'created_by', 'INT NULL AFTER notes');
-      await ensureIndex('customers', 'idx_customers_created_by', '`created_by`');
-      await ensureColumn('receipts', 'notes', 'TEXT NULL AFTER staff_id');
-      await ensureColumn('products', 'pieces_per_box', 'INT NOT NULL DEFAULT 1 AFTER selling_price');
-      await ensureColumn('sale_items', 'unit', "ENUM('single','dozen','box') NOT NULL DEFAULT 'single' AFTER quantity");
-      await ensureColumn('sale_items', 'base_quantity', 'INT NOT NULL DEFAULT 0 AFTER unit');
-      await query('UPDATE sale_items SET base_quantity = quantity WHERE base_quantity = 0');
+    if (databaseReady || process.env.ALLOW_MEMORY_DB === "true") {
+      await ensureColumn("users", "google_id", "TEXT NULL");
+      await ensureColumn("users", "profile_picture", "TEXT NULL");
+      await ensureColumn(
+        "users",
+        "auth_provider",
+        "TEXT NOT NULL DEFAULT 'local'",
+      );
+      await query(
+        "ALTER TABLE \"users\" ADD CONSTRAINT IF NOT EXISTS users_auth_provider_check CHECK (auth_provider IN ('local','google'))",
+      );
+      await query('ALTER TABLE "users" ALTER COLUMN role TYPE TEXT');
+      await query('ALTER TABLE "users" ALTER COLUMN status TYPE TEXT');
+      await query(
+        'ALTER TABLE "customers" ADD COLUMN IF NOT EXISTS initial_amount NUMERIC(12,2) NOT NULL DEFAULT 0',
+      );
+      await query(
+        'ALTER TABLE "customers" ADD COLUMN IF NOT EXISTS created_by INTEGER NULL',
+      );
+      await ensureIndex("customers", "idx_customers_created_by", "created_by");
+      await ensureColumn("receipts", "notes", "TEXT NULL");
+      await query(
+        'ALTER TABLE "products" ADD COLUMN IF NOT EXISTS pieces_per_box INTEGER NOT NULL DEFAULT 1',
+      );
+      await query(
+        "ALTER TABLE \"sale_items\" ADD COLUMN IF NOT EXISTS unit TEXT NOT NULL DEFAULT 'single'",
+      );
+      await query(
+        'ALTER TABLE "sale_items" ADD COLUMN IF NOT EXISTS base_quantity INTEGER NOT NULL DEFAULT 0',
+      );
+      await query(
+        "UPDATE sale_items SET base_quantity = quantity WHERE base_quantity = 0",
+      );
       await query(`
         UPDATE customers c
         SET created_by = (
@@ -127,23 +140,20 @@ const bootstrap = async () => {
         )
         WHERE c.created_by IS NULL
       `);
-      if (process.env.NODE_ENV !== 'production' && process.env.SEED_DEFAULT_USERS === 'true') {
-        await seedSuperAdmin();
-        await seedAdmin();
-      }
+      await seedAdmin();
     } else {
-      console.warn('Starting without a database. API requests will return 503 until MySQL is available.');
+      console.warn(
+        "Starting without a database. API requests will return 503 until PostgreSQL is available.",
+      );
     }
 
     app.listen(PORT, () => {
       console.log(`Golden Agrochemicals backend running on port ${PORT}`);
     });
   } catch (error) {
-    console.error('Failed to start application:', error);
+    console.error("Failed to start application:", error);
     process.exit(1);
   }
 };
 
 bootstrap();
-
-

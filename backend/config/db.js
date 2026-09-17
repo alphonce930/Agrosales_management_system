@@ -1,39 +1,62 @@
-import mysql from "mysql2/promise";
+import pg from "pg";
 import dotenv from "dotenv";
 
 dotenv.config();
 
-const pool = mysql.createPool({
-  host: process.env.DB_HOST || "localhost",
-  port: Number(process.env.DB_PORT) || 3306,
-  user: process.env.DB_USER || "root",
-  password: process.env.DB_PASSWORD || "",
-  database: process.env.DB_NAME || "golden_agrochemicals",
-  waitForConnections: true,
-  connectionLimit: Number(process.env.DB_CONNECTION_LIMIT) || 20,
-  maxIdle: Number(process.env.DB_MAX_IDLE) || 10,
-  idleTimeout: Number(process.env.DB_IDLE_TIMEOUT_MS) || 60000,
-  queueLimit: 0,
-  charset: "utf8mb4",
-  enableKeepAlive: true,
-  keepAliveInitialDelay: 0,
-  connectTimeout: Number(process.env.DB_CONNECT_TIMEOUT_MS) || 5000,
-});
+const { Pool } = pg;
 
+const buildConnectionConfig = () => {
+  const connectionString =
+    process.env.DATABASE_URL || process.env.DB_URL || undefined;
+
+  if (connectionString) {
+    return {
+      connectionString,
+      ssl:
+        process.env.DB_SSL === "true" || process.env.NODE_ENV === "production"
+          ? { rejectUnauthorized: false }
+          : false,
+      max: Number(process.env.DB_CONNECTION_LIMIT) || 20,
+      idleTimeoutMillis: Number(process.env.DB_IDLE_TIMEOUT_MS) || 60000,
+    };
+  }
+
+  if (!process.env.DB_HOST || !process.env.DB_NAME || !process.env.DB_USER) {
+    throw new Error("DATABASE_URL is not configured.");
+  }
+
+  return {
+    host: process.env.DB_HOST,
+    port: Number(process.env.DB_PORT) || 5432,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD || "",
+    database: process.env.DB_NAME,
+    ssl:
+      process.env.DB_SSL === "true" || process.env.NODE_ENV === "production"
+        ? { rejectUnauthorized: false }
+        : false,
+    max: Number(process.env.DB_CONNECTION_LIMIT) || 20,
+    idleTimeoutMillis: Number(process.env.DB_IDLE_TIMEOUT_MS) || 60000,
+  };
+};
+
+const pool = new Pool(buildConnectionConfig());
 const allowMemoryFallback = process.env.ALLOW_MEMORY_DB === "true";
 let databaseUnavailableUntil = 0;
 const databaseRetryDelay = Number(process.env.DB_RETRY_DELAY_MS) || 30000;
 
-const isConnectionError = (error) =>
-  [
+const isConnectionError = (error) => {
+  const code = error?.code || "";
+  return [
     "ECONNREFUSED",
     "ECONNRESET",
     "ETIMEDOUT",
     "ENOTFOUND",
-    "PROTOCOL_CONNECTION_LOST",
-    "ER_ACCESS_DENIED_ERROR",
-    "ER_BAD_DB_ERROR",
-  ].includes(error?.code);
+    "57P01",
+    "28P01",
+    "42P01",
+  ].includes(code);
+};
 
 const unavailableError = () => {
   const error = new Error(
@@ -42,6 +65,35 @@ const unavailableError = () => {
   error.code = "DB_UNAVAILABLE";
   error.status = 503;
   return error;
+};
+
+const extractTableName = (sql) => {
+  const match = sql.trim().match(/^INSERT\s+INTO\s+"?([a-zA-Z0-9_]+)"?/i);
+  return match ? match[1].toLowerCase() : null;
+};
+
+export const normalizePostgresSql = (sql) => {
+  let index = 0;
+  return sql.replace(/\?/g, () => {
+    index += 1;
+    return `$${index}`;
+  });
+};
+
+const shapeMutationResult = (result, sql) => {
+  const rows = Array.isArray(result?.rows) ? result.rows : [];
+  const rowCount = Number(result?.rowCount ?? rows.length ?? 0);
+  const insertId = rows[0]?.id ?? null;
+
+  rows.insertId = insertId;
+  rows.affectedRows = rowCount;
+  rows.rowCount = rowCount;
+
+  if (extractTableName(sql) && rows[0]?.id === undefined && rowCount > 0) {
+    rows.insertId = null;
+  }
+
+  return rows;
 };
 
 const fallbackStore = {
@@ -170,7 +222,8 @@ const fallbackQuery = async (sql, params = []) => {
       created_at: new Date().toISOString(),
     };
     fallbackStore.users.push(newUser);
-    return { insertId: newUser.id };
+    const insertResult = { insertId: newUser.id, affectedRows: 1 };
+    return insertResult;
   }
 
   if (
@@ -212,7 +265,7 @@ const fallbackQuery = async (sql, params = []) => {
       created_at: new Date().toISOString(),
     };
     fallbackStore.activityLogs.push(newLog);
-    return { insertId: newLog.id };
+    return { insertId: newLog.id, affectedRows: 1 };
   }
 
   if (
@@ -254,7 +307,7 @@ const fallbackQuery = async (sql, params = []) => {
       updated_at: new Date().toISOString(),
     };
     fallbackStore.customers.push(customer);
-    return { insertId: customer.id };
+    return { insertId: customer.id, affectedRows: 1 };
   }
 
   if (normalized.startsWith("SELECT * FROM customers WHERE id = ?")) {
@@ -307,7 +360,7 @@ const fallbackQuery = async (sql, params = []) => {
       category_name: null,
     };
     fallbackStore.products.push(product);
-    return { insertId: product.id };
+    return { insertId: product.id, affectedRows: 1 };
   }
 
   if (normalized.startsWith("DELETE FROM products WHERE id = ?")) {
@@ -337,8 +390,12 @@ export const query = async (sql, params = []) => {
   }
 
   try {
-    const [rows] = await pool.query(sql, params);
-    return rows;
+    const preparedSql = normalizePostgresSql(sql);
+    const result = await pool.query(preparedSql, params);
+    const mutation = /^(INSERT|UPDATE|DELETE|CREATE|ALTER|DROP)\b/i.test(
+      sql.trim(),
+    );
+    return mutation ? shapeMutationResult(result, sql) : result.rows;
   } catch (error) {
     if (!isConnectionError(error)) throw error;
     databaseUnavailableUntil = Date.now() + databaseRetryDelay;
@@ -352,8 +409,33 @@ export const query = async (sql, params = []) => {
 
 export const getConnection = async () => {
   if (Date.now() < databaseUnavailableUntil) throw unavailableError();
+
   try {
-    return await pool.getConnection();
+    const client = await pool.connect();
+    const connection = {
+      ...client,
+      async query(sql, params = []) {
+        const result = await client.query(normalizePostgresSql(sql), params);
+        const mutation = /^(INSERT|UPDATE|DELETE|CREATE|ALTER|DROP)\b/i.test(
+          sql.trim(),
+        );
+        const rows = mutation ? shapeMutationResult(result, sql) : result.rows;
+        return [rows, result.fields || []];
+      },
+      async beginTransaction() {
+        await client.query("BEGIN");
+      },
+      async commit() {
+        await client.query("COMMIT");
+      },
+      async rollback() {
+        await client.query("ROLLBACK");
+      },
+      release() {
+        client.release();
+      },
+    };
+    return connection;
   } catch (error) {
     if (isConnectionError(error)) {
       databaseUnavailableUntil = Date.now() + databaseRetryDelay;
@@ -366,20 +448,19 @@ export const getConnection = async () => {
 export async function initializeDatabase() {
   try {
     await pool.query("SELECT 1");
-    console.log("Database initialized successfully");
     return true;
   } catch (error) {
     if (!isConnectionError(error)) throw error;
     databaseUnavailableUntil = Date.now() + databaseRetryDelay;
     if (allowMemoryFallback) {
       console.warn(
-        "MySQL not available; using the configured in-memory development store. Data will not persist.",
+        "Database not available; using the configured in-memory development store. Data will not persist.",
       );
       await ensureFallbackSeed();
       return false;
     }
     console.error(
-      "MySQL is not available. Configure DB_* variables and apply backend/database/schema.sql.",
+      "PostgreSQL is not available. Configure DATABASE_URL and apply the schema.",
     );
     return false;
   }

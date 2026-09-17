@@ -22,7 +22,6 @@
     "google-auth-library": "^11.0.2",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
-    "mysql2": "^3.4.5",
     "pg": "^8.23.0"
   }
 }

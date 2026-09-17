@@ -1,19 +1,18 @@
 services:
   database:
-    image: mysql:8.0
+    image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${DB_NAME}
-      MYSQL_USER: ${DB_USER}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: golden_agrochemicals
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
     ports:
-      - '${MYSQL_HOST_PORT:-3306}:3306'
+      - "5432:5432"
     volumes:
-      - mysql_data:/var/lib/mysql
+      - postgres_data:/var/lib/postgresql/data
       - ./backend/database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     healthcheck:
-      test: ['CMD-SHELL', 'mysqladmin ping -h localhost -u root -p"$${MYSQL_ROOT_PASSWORD}" --silent']
+      test: ["CMD-SHELL", "pg_isready -U postgres -d golden_agrochemicals"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -25,19 +24,17 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: development
-      DB_HOST: database
-      DB_PORT: 3306
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      DB_NAME: ${DB_NAME}
+      DATABASE_URL: postgresql://postgres:postgres@database:5432/golden_agrochemicals
       PORT: 5000
-      JWT_SECRET: ${JWT_SECRET}
-      FRONTEND_URL: ${FRONTEND_URL}
+      JWT_SECRET: ${JWT_SECRET:-replace-with-a-random-secret-at-least-16-characters}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@goldenagro.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-replace-with-a-strong-admin-password}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-      SEED_DEFAULT_USERS: ${SEED_DEFAULT_USERS:-true}
+      SEED_DEFAULT_USERS: ${SEED_DEFAULT_USERS:-false}
     ports:
-      - '${BACKEND_HOST_PORT:-5000}:5000'
+      - "${BACKEND_HOST_PORT:-5000}:5000"
     volumes:
       - ./backend:/app/backend
       - backend_node_modules:/app/backend/node_modules
@@ -45,7 +42,13 @@ services:
       database:
         condition: service_healthy
     healthcheck:
-      test: ['CMD', 'node', '-e', "fetch('http://localhost:5000/').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:5000/').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -60,7 +63,7 @@ services:
       VITE_API_URL: /api
       VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     ports:
-      - '${FRONTEND_HOST_PORT:-5173}:5173'
+      - "${FRONTEND_HOST_PORT:-5173}:5173"
     volumes:
       - ./frontend:/app/frontend
       - frontend_node_modules:/app/frontend/node_modules
@@ -69,7 +72,7 @@ services:
         condition: service_healthy
 
 volumes:
-  mysql_data:
+  postgres_data:
   backend_node_modules:
   frontend_node_modules:
 

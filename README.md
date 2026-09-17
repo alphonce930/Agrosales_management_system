@@ -4,201 +4,154 @@ A full-stack ERP-style agrochemical management platform with customer management
 
 ## Stack
 
-- **Frontend**: React + Vite + Tailwind + Recharts
-- **Backend**: Node.js + Express + MySQL
-- **Authentication**: JWT + bcrypt + Google Identity Services
+- Frontend: React + Vite + Tailwind + Recharts
+- Backend: Node.js + Express + PostgreSQL
+- Auth: JWT + bcrypt + Google Identity Services
 
-## Project Structure
+## Project structure
 
 ```bash
 golden-agrochemicals/
 ├── frontend/
 ├── backend/
 ├── README.md
+├── docker-compose.yml
+├── .env.production.example
 └── .gitignore
 ```
 
-## Setup
+## Local development
 
-### 1. Install Dependencies
+### 1. Install dependencies
 
 ```bash
 cd frontend && npm install
 cd ../backend && npm install
 ```
 
-### 2. Configure Environment Variables
+### 2. Configure environment
 
-Create `backend/.env` from `backend/.env.example` and `frontend/.env` from `frontend/.env.example`.
-
-**Important security notes:**
-- Set a long random value for `JWT_SECRET`
-- Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `backend/.env` only
-- Only `VITE_GOOGLE_CLIENT_ID` belongs in the frontend environment
-- Never put the Google client secret in frontend code
-
-### 3. Configure the Database
-
-**For a new database:**
-- Run the original schema file
-
-**For an existing database:**
-- Run `backend/database/google_auth_migration.sql` once to add `google_id`, `profile_picture`, and `auth_provider` columns
-
-**Database connection:**
-- Verify `DB_HOST`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME` in your `.env` file
-- The application returns a clear database-unavailable response instead of silently saving data to temporary memory
-
-**For performance optimization:**
-- Run `backend/database/performance_migration.sql` once to add query indexes without recreating tables
-
-### 4. Configure Google Cloud OAuth
-
-1. Create or select a project in Google Cloud Console
-2. Configure the OAuth consent screen and add test users/accounts for development
-3. Create OAuth credentials for a **Web application**
-4. Add `http://localhost:5173` under **Authorized JavaScript origins**
-5. Add your production HTTPS origin when deploying (e.g., `https://app.example.com`)
-6. Place the web client ID in:
-   - `backend/.env` as `GOOGLE_CLIENT_ID`
-   - `frontend/.env` as `VITE_GOOGLE_CLIENT_ID`
-7. Keep the client secret in the backend only
-
-**Note:** This implementation uses the Google Identity Services popup/credential flow, so no application redirect URI is required.
-
-### 5. Start the Complete App (Production-Style)
-
-Build the React app and serve both frontend and API through Express on a single port:
+Create a backend environment file from the sample file and set your values:
 
 ```bash
-cd backend
-npm run start:app
+cp backend/.env.example backend/.env
 ```
 
-Open `http://localhost:5002` in your browser. This is the recommended setup for production; all browser calls stay same-origin.
+Required backend values for local development:
 
-### 6. Development Mode
+- `DATABASE_URL` or the legacy `DB_*` variables for a local Postgres instance
+- `JWT_SECRET` with a value of at least 16 random characters
+- `ADMIN_EMAIL` and `ADMIN_PASSWORD` for the app bootstrap user
+- `FRONTEND_URL` pointing to the frontend origin
+- `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` when Google sign-in is enabled
 
-Run backend and frontend separately with hot-reload:
+### 3. Start PostgreSQL and the app
 
-**Terminal 1 - Backend:**
+This repo includes a local PostgreSQL compose setup:
+
 ```bash
+docker compose up -d database
 cd backend
 npm run dev
 ```
 
-**Terminal 2 - Frontend:**
+Then start the frontend in a separate terminal:
+
 ```bash
 cd frontend
 npm run dev
 ```
 
-## Docker Setup
+The app is available at `http://localhost:5173` by default, and the backend API is served at `http://localhost:5000`.
 
-### Requirements
+### 4. Database schema
 
-- Docker Desktop with Docker Compose v2
-- Git
-- VS Code (recommended)
-- An API client such as Thunder Client or curl
-- A database client such as MySQL Workbench or DBeaver (optional)
-
-*Note: Node.js and npm are installed inside the development containers, so they are not required on the host.*
-
-### Useful Commands
+Apply the schema once for a blank PostgreSQL database:
 
 ```bash
-docker compose build          # Build all services
-docker compose up             # Start all services
-docker compose logs -f --tail=100  # View logs
-docker compose logs -f backend     # View backend logs only
-docker compose restart        # Restart services
-docker compose exec backend sh     # Shell into backend container
-docker compose ps             # Show running services
-docker compose down --volumes --remove-orphans  # Clean up everything
+psql "$DATABASE_URL" -f backend/database/schema.sql
 ```
 
-**Makefile shortcuts** (equivalent to above):
+If you are migrating from an older app version, run any relevant SQL migrations before using the app.
+
+## Admin bootstrap
+
+The backend creates the administrator account automatically on startup when both environment variables are set:
+
 ```bash
-make up       # docker compose up
-make down     # docker compose down
-make build    # docker compose build
-make logs     # docker compose logs
-make restart  # docker compose restart
-make shell    # docker compose exec backend sh
-make clean    # docker compose down --volumes --remove-orphans
-make config   # docker compose config
+ADMIN_EMAIL=admin@goldenagro.com
+ADMIN_PASSWORD=change-this-to-a-strong-password
 ```
 
-### Ports and Environment Variables
+This bootstrap is intentionally idempotent and safe for production. If either value is missing, the app starts without creating the admin account and logs a warning instead.
 
-| Service  | Container Port | Host Port | Purpose                  |
-|----------|---------------:|----------:|--------------------------|
-| frontend |           5173 |      5173 | Vite development server  |
-| backend  |           5000 |      5000 | Express API              |
-| database |           3306 |      3306 | MySQL administration     |
+## Google authentication
 
-**Required `.env` variables:**
-- `MYSQL_ROOT_PASSWORD`
-- `DB_NAME`
-- `DB_USER`
-- `DB_PASSWORD`
-- `JWT_SECRET`
-- `FRONTEND_URL`
+The frontend receives a Google ID token from the official GIS library and sends it to `POST /api/auth/google`. The backend verifies the token audience and signature with the official Google library, requires a verified email, and then returns the same JWT used by password login.
 
-**Optional variables:**
-- `GOOGLE_CLIENT_ID`
-- `GOOGLE_CLIENT_SECRET`
+Google users are created as verified staff accounts. If a verified Google email matches an existing account, the Google ID is linked to that account instead of creating a duplicate.
 
-Host ports can be changed in the `.env` file if needed.
+## Vercel deployment
 
-### Troubleshooting Docker Setup
+Deploy the frontend and backend as separate Vercel projects.
 
-- **Check configuration errors**: `docker compose config`
-- **Inspect health and startup**: `docker compose ps` and `docker compose logs database backend`
-- **Reset database credentials**: `docker compose down --volumes` then start again
-- **Port conflicts**: If ports 5173, 5000, or 3306 are in use, change the host port mapping in `.env`
-- **Default credentials**: Development seed creates:
-  - Username: `admin` / Password: `Admin@123`
-  - Username: `superadmin` / Password: `SuperAdmin@123`
-  - **Keep `SEED_DEFAULT_USERS=false` in production!**
+### Frontend project
 
-## Production Deployment
+- Root Directory: `frontend`
+- Framework Preset: `Vite`
+- Build Command: `npm run build`
+- Output Directory: `dist`
+- Install Command: `npm ci`
+- Node.js Version: `24.x`
 
-### Docker Production Image
+Set the production environment variables:
 
-The `Dockerfile` builds the frontend and serves static files from the Express backend on port `5000`. Supply production secrets through your deployment platform using `.env.production.example` as a reference.
+```text
+VITE_API_URL=https://<backend-project>.vercel.app/api
+VITE_GOOGLE_CLIENT_ID=<Google web client ID>
+```
 
-### Vercel Deployment
+### Backend project
 
-Deploy as two separate Vercel projects to preserve the Vite frontend and Express backend boundaries.
+- Root Directory: `backend`
+- Framework Preset: `Other`
+- Build Command: leave empty
+- Output Directory: leave empty
+- Install Command: `npm ci`
+- Node.js Version: `24.x`
 
-#### Frontend Project Settings
+Add these production environment variables in Vercel:
 
-- **Root Directory**: `frontend`
-- **Framework Preset**: `Vite`
-- **Build Command**: `npm run build`
-- **Output Directory**: `dist`
-- **Install Command**: `npm ci`
-- **Node.js Version**: `24.x`
-- **Environment Variables**: Add `VITE_GOOGLE_CLIENT_ID` for Production, Preview, and Development as needed
+```text
+NODE_ENV=production
+DATABASE_URL=postgresql://<user>:<password>@<host>:5432/<database>?sslmode=require
+JWT_SECRET=<32+ random characters>
+ADMIN_EMAIL=admin@goldenagro.com
+ADMIN_PASSWORD=<strong admin password>
+FRONTEND_URL=https://<frontend-project>.vercel.app
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+ALLOW_MEMORY_DB=false
+SEED_DEFAULT_USERS=false
+DB_SSL=true
+```
 
-The `frontend/vercel.json` rewrite keeps BrowserRouter routes (e.g., `/login`, `/staff`) working after page refresh.
+For Neon, copy the connection string from the Neon dashboard and paste it into `DATABASE_URL`. Keep the app on server-side env vars only; never expose `JWT_SECRET`, `ADMIN_PASSWORD`, or `GOOGLE_CLIENT_SECRET` to the browser.
 
-#### Backend Project Settings
+After deployment, verify the app can:
 
-- **Root Directory**: `backend`
-- **Framework Preset**: `Other`
-- **Build Command**: (leave empty)
-- **Output Directory**: (leave empty)
-- **Install Command**: `npm ci`
-- **Node.js Version**: `24.x`
-- **Environment Variables**: Add all backend secrets (`JWT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `DB_*` variables)
+1. boot successfully with the Neon database
+2. create the admin account if env values are configured
+3. log in as the admin user
+4. use existing sales, customers, product, payment, and analytics flows without errors
+
+## Production notes
+
+- Do not enable `ALLOW_MEMORY_DB=true` outside local development.
+- Do not set `SEED_DEFAULT_USERS=true` in production.
+- Keep `FRONTEND_URL` restricted to the exact frontend origin used by the app.
+- Use HTTPS everywhere in production.
 
 ## License
 
-[Add your license here]
-
-## Support
-
-For issues or questions, please open a GitHub issue in this repository.
+This project is for internal business use and is not published as a general package.
