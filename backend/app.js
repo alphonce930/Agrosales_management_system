@@ -26,6 +26,7 @@ const projectRoot = path.resolve(
 const frontendDist = path.join(projectRoot, "frontend", "dist");
 const allowedOrigins = [
   "https://agrosales-management-system.vercel.app",
+  "https://agrosales-management-system-7nb8.vercel.app",
   ...(process.env.FRONTEND_URL || "http://localhost:5173").split(","),
 ]
   .map((origin) => origin.trim())

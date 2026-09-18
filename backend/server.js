@@ -1,7 +1,7 @@
 import app from "./app.js";
 import dotenv from "dotenv";
 import { initializeDatabase, query } from "./config/db.js";
-import { hashPassword } from "./utils/helpers.js";
+import { seedBootstrapUsers } from "./config/bootstrapUsers.js";
 
 dotenv.config();
 
@@ -37,56 +37,6 @@ const ensureIndex = async (table, index, columns) => {
   }
 };
 
-const getAdminUserConfig = () => {
-  const email = (process.env.ADMIN_EMAIL || "").trim();
-  const password = process.env.ADMIN_PASSWORD || "";
-  return { email, password };
-};
-
-const seedAdmin = async () => {
-  const { email, password } = getAdminUserConfig();
-
-  if (!email || !password) {
-    console.warn(
-      "Admin bootstrap is skipped until ADMIN_EMAIL and ADMIN_PASSWORD are configured.",
-    );
-    return;
-  }
-
-  const rows = await query(
-    "SELECT id, username, email FROM users WHERE username = $1 OR email = $2",
-    [email.split("@")[0], email],
-  );
-
-  if (rows.length > 0) {
-    console.log("Admin account already exists. Skipping admin creation.");
-    return;
-  }
-
-  const username = (
-    email.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "") || "admin"
-  ).slice(0, 40);
-  const passwordHash = await hashPassword(password);
-
-  await query(
-    `INSERT INTO users
-      (full_name, username, email, phone, location, password, role, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-    [
-      "System Administrator",
-      username,
-      email,
-      "+255700000001",
-      "Dar es Salaam",
-      passwordHash,
-      "admin",
-      "verified",
-    ],
-  );
-
-  console.log("Admin account created successfully.");
-};
-
 const bootstrap = async () => {
   try {
     if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 16) {
@@ -104,9 +54,19 @@ const bootstrap = async () => {
         "auth_provider",
         "TEXT NOT NULL DEFAULT 'local'",
       );
-      await query(
-        "ALTER TABLE \"users\" ADD CONSTRAINT IF NOT EXISTS users_auth_provider_check CHECK (auth_provider IN ('local','google'))",
-      );
+      await query(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conname = 'users_auth_provider_check'
+          ) THEN
+            ALTER TABLE "users"
+              ADD CONSTRAINT users_auth_provider_check
+              CHECK (auth_provider IN ('local','google'));
+          END IF;
+        END $$;
+      `);
       await query('ALTER TABLE "users" ALTER COLUMN role TYPE TEXT');
       await query('ALTER TABLE "users" ALTER COLUMN status TYPE TEXT');
       await query(
@@ -140,7 +100,7 @@ const bootstrap = async () => {
         )
         WHERE c.created_by IS NULL
       `);
-      await seedAdmin();
+      await seedBootstrapUsers();
     } else {
       console.warn(
         "Starting without a database. API requests will return 503 until PostgreSQL is available.",

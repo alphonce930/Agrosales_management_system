@@ -107,32 +107,44 @@ export const ensureFallbackSeed = async () => {
   if (fallbackStore.users.length) return;
 
   const { hashPassword } = await import("../utils/helpers.js");
-  fallbackStore.users = [
+  const configuredUsers = [
     {
       id: 1,
       full_name: "Super Administrator",
-      username: "superadmin",
-      email: "superadmin@goldenagro.com",
+      username:
+        (process.env.SUPER_ADMIN_EMAIL || "")
+          .split("@")[0]
+          .replace(/[^a-zA-Z0-9_]/g, "") || "superadmin",
+      email: (process.env.SUPER_ADMIN_EMAIL || "").trim().toLowerCase(),
       phone: "+255700000000",
       location: "Dar es Salaam",
-      password: await hashPassword("SuperAdmin@123"),
+      password: process.env.SUPER_ADMIN_PASSWORD || "",
       role: "super_admin",
-      status: "verified",
-      created_at: new Date().toISOString(),
     },
     {
       id: 2,
       full_name: "System Administrator",
-      username: "admin",
-      email: "admin@goldenagro.com",
+      username:
+        (process.env.ADMIN_EMAIL || "")
+          .split("@")[0]
+          .replace(/[^a-zA-Z0-9_]/g, "") || "admin",
+      email: (process.env.ADMIN_EMAIL || "").trim().toLowerCase(),
       phone: "+255700000001",
       location: "Dar es Salaam",
-      password: await hashPassword("Admin@123"),
+      password: process.env.ADMIN_PASSWORD || "",
       role: "admin",
-      status: "verified",
-      created_at: new Date().toISOString(),
     },
   ];
+  fallbackStore.users = await Promise.all(
+    configuredUsers
+      .filter((user) => user.email && user.password)
+      .map(async (user) => ({
+        ...user,
+        password: await hashPassword(user.password),
+        status: "verified",
+        created_at: new Date().toISOString(),
+      })),
+  );
   fallbackStore.activityLogs = [
     {
       id: 1,

@@ -41,7 +41,8 @@ Required backend values for local development:
 
 - `DATABASE_URL` or the legacy `DB_*` variables for a local Postgres instance
 - `JWT_SECRET` with a value of at least 16 random characters
-- `ADMIN_EMAIL` and `ADMIN_PASSWORD` for the app bootstrap user
+- `ADMIN_EMAIL` and `ADMIN_PASSWORD` for the verified system administrator
+- `SUPER_ADMIN_EMAIL` and `SUPER_ADMIN_PASSWORD` for the verified super administrator
 - `FRONTEND_URL` pointing to the frontend origin
 - `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` when Google sign-in is enabled
 
@@ -81,9 +82,11 @@ The backend creates the administrator account automatically on startup when both
 ```bash
 ADMIN_EMAIL=admin@goldenagro.com
 ADMIN_PASSWORD=change-this-to-a-strong-password
+SUPER_ADMIN_EMAIL=superadmin@goldenagro.com
+SUPER_ADMIN_PASSWORD=change-this-to-a-strong-super-admin-password
 ```
 
-This bootstrap is intentionally idempotent and safe for production. If either value is missing, the app starts without creating the admin account and logs a warning instead.
+This bootstrap is intentionally idempotent and safe for production. Each account is created only when its email and password are configured, and existing accounts are left unchanged.
 
 ## Google authentication
 
@@ -128,6 +131,8 @@ DATABASE_URL=postgresql://<user>:<password>@<host>:5432/<database>?sslmode=requi
 JWT_SECRET=<32+ random characters>
 ADMIN_EMAIL=admin@goldenagro.com
 ADMIN_PASSWORD=<strong admin password>
+SUPER_ADMIN_EMAIL=superadmin@goldenagro.com
+SUPER_ADMIN_PASSWORD=<strong super-admin password>
 FRONTEND_URL=https://<frontend-project>.vercel.app
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
@@ -138,7 +143,7 @@ DB_SSL=true
 
 For Neon, copy the connection string from the Neon dashboard and paste it into `DATABASE_URL`. Keep the app on server-side env vars only; never expose `JWT_SECRET`, `ADMIN_PASSWORD`, or `GOOGLE_CLIENT_SECRET` to the browser.
 
-After deployment, verify the app can:
+Apply `backend/database/schema.sql` to a blank Neon database before the first deployment. The backend then creates the configured verified admin and super-admin accounts on startup or on the first Vercel API request. Verify the app can:
 
 1. boot successfully with the Neon database
 2. create the admin account if env values are configured
