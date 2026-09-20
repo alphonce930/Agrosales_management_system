@@ -95,16 +95,7 @@ export default function RegisterPage() {
 
     try {
       const { data } = await api.post("/auth/register", form);
-      setMessage(data.message);
-      setForm({
-        full_name: "",
-        username: "",
-        email: "",
-        phone: "",
-        location: "",
-        password: "",
-        confirmPassword: "",
-      });
+      navigate("/login", { state: { message: data.message } });
     } catch (err) {
       setError(err.response?.data?.message || "Registration failed.");
     } finally {

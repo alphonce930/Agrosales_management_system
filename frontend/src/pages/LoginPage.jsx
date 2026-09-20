@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ArrowLeft, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import GoogleSignInButton from "../components/GoogleSignInButton";
@@ -7,16 +7,19 @@ import companyLogo from "../assets/golden-agrochemicals-logo.jpeg";
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { login, googleLogin, sessionMessage } = useAuth();
   const [form, setForm] = useState({ email: "", password: "" });
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState(location.state?.message || "");
   const [loading, setLoading] = useState(false);
 
   const onSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError("");
+    setMessage("");
 
     try {
       const result = await login(form);
@@ -110,9 +113,11 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {(error || sessionMessage) && (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
-              {error || sessionMessage}
+          {(error || sessionMessage || message) && (
+            <div
+              className={`rounded-xl border px-3 py-2 text-sm ${error || sessionMessage ? "border-red-200 bg-red-50 text-red-600" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}
+            >
+              {error || sessionMessage || message}
             </div>
           )}
 
