@@ -4,9 +4,8 @@ import api from '../services/api';
 
 const companyInfo = {
   name: 'Golden Agrochemicals',
-  branch: 'Mbagala Rangi Branch',
-  phone: '0683 789 428',
-  address: 'Kilimani, Dar es Salaam, Tanzania',
+  phone: '0749 556 578',
+  address: 'mwenge, Dar es Salaam, Tanzania',
   email: 'info@goldenagrochemicals.co.tz'
 };
 
