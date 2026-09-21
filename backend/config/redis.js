@@ -67,7 +67,9 @@ export const getLoginIpRatelimit = () => {
   const client = getRedis();
   if (!client) return null;
   if (!loginIpRatelimit) {
-    const limit = Number(process.env.IP_RATE_LIMIT) || 20;
+    // This is an abuse backstop, not a per-user lockout. Keep it high enough
+    // for offices, shops, and mobile carriers where many valid users share IP.
+    const limit = Number(process.env.IP_RATE_LIMIT) || 100;
     const window = process.env.IP_RATE_WINDOW || "5m";
     loginIpRatelimit = new Ratelimit({ redis: client, limiter: Ratelimit.fixedWindow(limit, window), prefix: "auth:login:ip" });
   }

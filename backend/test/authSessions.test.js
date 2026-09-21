@@ -35,6 +35,18 @@ test("separate logins create independent refresh sessions", async () => {
   assert.equal(store.size, 2);
 });
 
+test("different users and devices receive distinct session keys", async () => {
+  store.clear();
+  const otherUser = { id: 8, role: "staff", email: "other@example.test" };
+  await Promise.all([
+    createSessionTokens({ user, ...context }),
+    createSessionTokens({ user, ...context }),
+    createSessionTokens({ user: otherUser, ...context }),
+  ]);
+  assert.equal(store.size, 3);
+  assert.equal(new Set(store.keys()).size, 3);
+});
+
 test("simultaneous refreshes consume a refresh token only once", async () => {
   store.clear();
   const initial = await createSessionTokens({ user, ...context });

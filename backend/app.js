@@ -21,16 +21,21 @@ dotenv.config();
 const app = express();
 // Vercel supplies the client address through one trusted proxy hop. Never
 // read x-forwarded-for directly in routes.
-app.set("trust proxy", process.env.VERCEL ? 1 : process.env.TRUST_PROXY === "true");
+app.set(
+  "trust proxy",
+  process.env.VERCEL ? 1 : process.env.TRUST_PROXY === "true",
+);
 const projectRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
 const frontendDist = path.join(projectRoot, "frontend", "dist");
+// Credentialed CORS cannot use a wildcard. Keep the production frontend
+// trusted by default and configure preview origins explicitly in FRONTEND_URL.
 const allowedOrigins = [
   "https://agrosales-management-system.vercel.app",
-  "https://agrosales-management-system-7nb8.vercel.app",
-  ...(process.env.FRONTEND_URL || "http://localhost:5173").split(","),
+  "http://localhost:5173",
+  ...(process.env.FRONTEND_URL || "").split(","),
 ]
   .map((origin) => origin.trim())
   .filter(Boolean);

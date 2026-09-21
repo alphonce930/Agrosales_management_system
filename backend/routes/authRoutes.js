@@ -352,7 +352,10 @@ router.post("/google", authAttemptLimiter, async (req, res) => {
   }
 });
 
-router.post("/refresh", authAttemptLimiter, async (req, res) => {
+// A refresh request already requires a one-time, HttpOnly session credential.
+// Do not count normal token refreshes against the login-attempt budget shared
+// by users behind the same NAT/proxy.
+router.post("/refresh", async (req, res) => {
   try {
     const refreshToken = readCookie(req, refreshCookieName());
     if (!refreshToken)

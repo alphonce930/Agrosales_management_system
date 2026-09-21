@@ -134,6 +134,15 @@ VITE_API_URL=https://<backend-project>.vercel.app/api
 VITE_GOOGLE_CLIENT_ID=<Google web client ID>
 ```
 
+For a Vercel preview deployment, set `VITE_API_URL` to the same backend
+project URL and add the exact preview frontend URL to the Google Cloud OAuth
+client's **Authorized JavaScript origins**. For example:
+
+```text
+VITE_API_URL=https://agrosales-management-system.vercel.app/api
+Google origin=https://agrosales-management-system-p3xt-ju33349kb.vercel.app
+```
+
 ### Backend project
 
 - Root Directory: `backend`
@@ -157,7 +166,8 @@ ADMIN_EMAIL=admin@goldenagro.com
 ADMIN_PASSWORD=<strong admin password>
 SUPER_ADMIN_EMAIL=superadmin@goldenagro.com
 SUPER_ADMIN_PASSWORD=<strong super-admin password>
-FRONTEND_URL=https://<frontend-project>.vercel.app
+# Comma-separate exact origins when production and a Vercel preview use the API.
+FRONTEND_URL=https://agrosales-management-system.vercel.app,https://agrosales-management-system-p3xt-ju33349kb.vercel.app
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 ALLOW_MEMORY_DB=false
@@ -170,7 +180,7 @@ UPSTASH_REDIS_REST_TOKEN=<Upstash REST token>
 REFRESH_COOKIE_SAME_SITE=none
 LOGIN_RATE_LIMIT=5
 LOGIN_RATE_WINDOW=5m
-IP_RATE_LIMIT=20
+IP_RATE_LIMIT=100
 IP_RATE_WINDOW=5m
 IDEMPOTENCY_TTL_SECONDS=86400
 ```
@@ -189,6 +199,9 @@ Apply `backend/database/schema.sql` to a blank Neon database before the first de
 - Do not enable `ALLOW_MEMORY_DB=true` outside local development.
 - Do not set `SEED_DEFAULT_USERS=true` in production.
 - Keep `FRONTEND_URL` restricted to the exact frontend origin used by the app.
+- Vercel preview URLs are different origins. To test one with this credentialed
+  API, append that exact preview URL to the backend's `FRONTEND_URL`, separated
+  by a comma, then redeploy the backend. Do not use `*` with credentials.
 - Use HTTPS everywhere in production.
 - Use your provider's pooled PostgreSQL connection URL where available. The backend pool defaults to 5 connections per serverless instance; do not raise it without accounting for Vercel concurrency and the database connection cap.
 - Redis is required in production for refresh sessions, distributed login limits, and sale/payment idempotency. Store its REST URL and token only in Vercel's backend environment settings.
