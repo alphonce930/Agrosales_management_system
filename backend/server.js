@@ -2,6 +2,7 @@ import app from "./app.js";
 import dotenv from "dotenv";
 import { initializeDatabase, query } from "./config/db.js";
 import { seedBootstrapUsers } from "./config/bootstrapUsers.js";
+import { initializeRedis } from "./config/redis.js";
 
 dotenv.config();
 
@@ -46,6 +47,7 @@ const bootstrap = async () => {
     }
 
     const databaseReady = await initializeDatabase();
+    await initializeRedis();
     if (databaseReady || process.env.ALLOW_MEMORY_DB === "true") {
       await ensureColumn("users", "google_id", "TEXT NULL");
       await ensureColumn("users", "profile_picture", "TEXT NULL");

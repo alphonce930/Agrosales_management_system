@@ -169,7 +169,7 @@ export const AuthProvider = ({ children }) => {
   const login = async (payload) => {
     const { data } = await api.post("/auth/login", payload);
     localStorage.setItem("token", data.token);
-    localStorage.setItem("refresh_token", data.refreshToken);
+    localStorage.removeItem("refresh_token"); // remove credentials saved by older clients
     localStorage.setItem("auth_user", JSON.stringify(data.user));
     localStorage.setItem(ACTIVITY_STORAGE_KEY, String(Date.now()));
     setToken(data.token);
@@ -183,7 +183,7 @@ export const AuthProvider = ({ children }) => {
   const googleLogin = async (credential) => {
     const { data } = await api.post("/auth/google", { credential });
     localStorage.setItem("token", data.token);
-    localStorage.setItem("refresh_token", data.refreshToken);
+    localStorage.removeItem("refresh_token");
     localStorage.setItem("auth_user", JSON.stringify(data.user));
     localStorage.setItem(ACTIVITY_STORAGE_KEY, String(Date.now()));
     setToken(data.token);
@@ -195,8 +195,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
-    const refreshToken = localStorage.getItem("refresh_token");
-    if (refreshToken) api.post("/auth/logout", { refreshToken }).catch(() => {});
+    api.post("/auth/logout").catch(() => {});
     localStorage.removeItem("token");
     localStorage.removeItem("refresh_token");
     localStorage.removeItem("auth_user");

@@ -45,6 +45,8 @@ Required backend values for local development:
 - `SUPER_ADMIN_EMAIL` and `SUPER_ADMIN_PASSWORD` for the verified super administrator
 - `FRONTEND_URL` pointing to the frontend origin
 - `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` when Google sign-in is enabled
+- `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` for login, refresh,
+  logout, and distributed rate limiting. These are required for authentication.
 
 ### 3. Start PostgreSQL and the app
 
@@ -64,6 +66,24 @@ npm run dev
 ```
 
 The app is available at `http://localhost:5173` by default, and the backend API is served at `http://localhost:5000`.
+
+### Redis for local development
+
+This application uses the existing `@upstash/redis` REST client so that the
+same session store works on local Node, Vercel, and multiple backend instances.
+Create a development Redis database in Upstash, copy its **REST URL** and
+**REST token** into `backend/.env`, and set:
+
+```text
+UPSTASH_REDIS_REST_URL=https://<your-development-redis>.upstash.io
+UPSTASH_REDIS_REST_TOKEN=<your-development-rest-token>
+REFRESH_COOKIE_SAME_SITE=lax
+```
+
+`docker compose up` passes those variables to the backend. A plain local Redis
+TCP container is not sufficient for this deployment-oriented REST client; use
+an Upstash development database (or deliberately add a compatible Redis client
+as a separate architectural change). Never commit the URL or token.
 
 ### 4. Database schema
 
@@ -147,6 +167,7 @@ DB_CONNECTION_LIMIT=5
 DB_IDLE_TIMEOUT_MS=30000
 UPSTASH_REDIS_REST_URL=<Upstash REST URL>
 UPSTASH_REDIS_REST_TOKEN=<Upstash REST token>
+REFRESH_COOKIE_SAME_SITE=none
 LOGIN_RATE_LIMIT=5
 LOGIN_RATE_WINDOW=5m
 IP_RATE_LIMIT=20
@@ -171,6 +192,12 @@ Apply `backend/database/schema.sql` to a blank Neon database before the first de
 - Use HTTPS everywhere in production.
 - Use your provider's pooled PostgreSQL connection URL where available. The backend pool defaults to 5 connections per serverless instance; do not raise it without accounting for Vercel concurrency and the database connection cap.
 - Redis is required in production for refresh sessions, distributed login limits, and sale/payment idempotency. Store its REST URL and token only in Vercel's backend environment settings.
+- Use a dedicated production Upstash Redis database and set both REST variables
+  on every backend deployment instance. The backend checks it at startup without
+  crashing unrelated API routes; login and refresh safely return 503 until it
+  is reachable. `REFRESH_COOKIE_SAME_SITE=none` is appropriate only when both
+  frontend and backend use HTTPS; keep `FRONTEND_URL` restricted to the exact
+  frontend origin so credentialed CORS requests remain safe.
 
 ## License
 

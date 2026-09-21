@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { OAuth2Client } from "google-auth-library";
 import dotenv from "dotenv";
 import { query } from "../config/db.js";
-import { hashPassword, comparePassword } from "../utils/helpers.js";
+import { hashPassword, comparePassword, getRefreshTtlSeconds } from "../utils/helpers.js";
 import { protect } from "../middleware/auth.js";
 import { getClientIp } from "../utils/clientIp.js";
 import { loginIpLimit, registerFailedLogin, clearFailedLoginLimit } from "../middleware/loginRateLimit.js";
@@ -14,6 +14,48 @@ dotenv.config();
 const router = express.Router();
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const authAttemptLimiter = loginIpLimit;
+
+const refreshCookieName = () =>
+  process.env.NODE_ENV === "production" ? "__Host-agro_refresh" : "agro_refresh";
+
+const refreshCookieOptions = () => {
+  const production = process.env.NODE_ENV === "production";
+  const sameSite = (process.env.REFRESH_COOKIE_SAME_SITE || (production ? "none" : "lax")).toLowerCase();
+  return {
+    httpOnly: true,
+    secure: production || sameSite === "none",
+    sameSite: ["lax", "strict", "none"].includes(sameSite) ? sameSite : "lax",
+    path: "/",
+    maxAge: getRefreshTtlSeconds() * 1000,
+  };
+};
+
+const readCookie = (req, name) => {
+  const value = req.headers.cookie
+    ?.split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${name}=`))
+    ?.slice(name.length + 1);
+  if (!value) return null;
+  try { return decodeURIComponent(value); } catch { return null; }
+};
+
+const setRefreshCookie = (res, refreshToken) =>
+  res.cookie(refreshCookieName(), refreshToken, refreshCookieOptions());
+
+const clearRefreshCookie = (res) =>
+  res.clearCookie(refreshCookieName(), {
+    ...refreshCookieOptions(),
+    maxAge: undefined,
+    expires: new Date(0),
+  });
+
+const sendAuthenticated = (res, tokens, user) => {
+  setRefreshCookie(res, tokens.refreshToken);
+  // Refresh credentials deliberately never enter JavaScript/localStorage.
+  return res.json(user ? { token: tokens.token, user: safeUser(user) } : { token: tokens.token });
+};
+
 const issueTokens = (req, user) => createSessionTokens({
   user,
   ip: getClientIp(req),
@@ -178,9 +220,13 @@ router.post("/login", authAttemptLimiter, async (req, res) => {
 
     await clearFailedLoginLimit(identity);
     const tokens = await issueTokens(req, user);
-    return res.json({ ...tokens, user: safeUser(user) });
+    return sendAuthenticated(res, tokens, user);
   } catch (error) {
-    return res.status(500).json({ message: error.message || "Login failed." });
+    if (error.status === 503) {
+      return res.status(503).json({ message: "Authentication is temporarily unavailable. Please try again shortly." });
+    }
+    console.error("Login failed:", error.message);
+    return res.status(500).json({ message: "Login failed. Please try again." });
   }
 });
 
@@ -294,9 +340,12 @@ router.post("/google", authAttemptLimiter, async (req, res) => {
     }
 
     const tokens = await issueTokens(req, user);
-    return res.json({ ...tokens, user: safeUser(user) });
+    return sendAuthenticated(res, tokens, user);
   } catch (error) {
     console.error("Google authentication failed:", error.message);
+    if (error.status === 503) {
+      return res.status(503).json({ message: "Authentication is temporarily unavailable. Please try again shortly." });
+    }
     return res
       .status(401)
       .json({ message: "Google authentication failed. Please try again." });
@@ -305,19 +354,21 @@ router.post("/google", authAttemptLimiter, async (req, res) => {
 
 router.post("/refresh", authAttemptLimiter, async (req, res) => {
   try {
-    if (typeof req.body?.refreshToken !== "string")
+    const refreshToken = readCookie(req, refreshCookieName());
+    if (!refreshToken)
       return res.status(400).json({ message: "Refresh token is required." });
-    const tokens = await rotateSessionTokens(req.body.refreshToken, {
+    const tokens = await rotateSessionTokens(refreshToken, {
       ip: getClientIp(req), userAgent: req.get("user-agent"),
     });
-    return res.json(tokens);
+    return sendAuthenticated(res, tokens);
   } catch (error) {
     return res.status(error.status || 401).json({ message: error.status === 503 ? "Authentication is temporarily unavailable." : "Your session has expired. Please sign in again." });
   }
 });
 
 router.post("/logout", async (req, res) => {
-  await revokeSession(req.body?.refreshToken);
+  await revokeSession(readCookie(req, refreshCookieName()));
+  clearRefreshCookie(res);
   return res.status(204).end();
 });
 
