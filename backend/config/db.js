@@ -1,5 +1,6 @@
 import pg from "pg";
 import dotenv from "dotenv";
+import { normalizePostgresSql as normalizeSql } from "../utils/sql.js";
 
 dotenv.config();
 
@@ -16,8 +17,10 @@ const buildConnectionConfig = () => {
         process.env.DB_SSL === "true" || process.env.NODE_ENV === "production"
           ? { rejectUnauthorized: false }
           : false,
-      max: Number(process.env.DB_CONNECTION_LIMIT) || 20,
-      idleTimeoutMillis: Number(process.env.DB_IDLE_TIMEOUT_MS) || 60000,
+      // Each serverless instance owns a pool. Keep this deliberately small;
+      // use the provider's pooled DATABASE_URL for production traffic.
+      max: Number(process.env.DB_CONNECTION_LIMIT) || (process.env.NODE_ENV === "production" ? 5 : 10),
+      idleTimeoutMillis: Number(process.env.DB_IDLE_TIMEOUT_MS) || 30000,
     };
   }
 
@@ -35,13 +38,16 @@ const buildConnectionConfig = () => {
       process.env.DB_SSL === "true" || process.env.NODE_ENV === "production"
         ? { rejectUnauthorized: false }
         : false,
-    max: Number(process.env.DB_CONNECTION_LIMIT) || 20,
-    idleTimeoutMillis: Number(process.env.DB_IDLE_TIMEOUT_MS) || 60000,
+    max: Number(process.env.DB_CONNECTION_LIMIT) || (process.env.NODE_ENV === "production" ? 5 : 10),
+    idleTimeoutMillis: Number(process.env.DB_IDLE_TIMEOUT_MS) || 30000,
   };
 };
 
 const pool = new Pool(buildConnectionConfig());
-const allowMemoryFallback = process.env.ALLOW_MEMORY_DB === "true";
+// A volatile fallback is only useful in explicit local development/tests. It
+// must never make a production write appear durable.
+const allowMemoryFallback =
+  process.env.NODE_ENV !== "production" && process.env.ALLOW_MEMORY_DB === "true";
 let databaseUnavailableUntil = 0;
 const databaseRetryDelay = Number(process.env.DB_RETRY_DELAY_MS) || 30000;
 
@@ -72,13 +78,7 @@ const extractTableName = (sql) => {
   return match ? match[1].toLowerCase() : null;
 };
 
-export const normalizePostgresSql = (sql) => {
-  let index = 0;
-  return sql.replace(/\?/g, () => {
-    index += 1;
-    return `$${index}`;
-  });
-};
+export const normalizePostgresSql = normalizeSql;
 
 const shapeMutationResult = (result, sql) => {
   const rows = Array.isArray(result?.rows) ? result.rows : [];

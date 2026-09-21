@@ -122,7 +122,7 @@ export default function StaffSalesPage() {
         payment_type: form.payment_type,
         amount_paid: form.amount_paid === "" ? 0 : Number(form.amount_paid),
         notes: form.notes,
-      });
+      }, { headers: { "Idempotency-Key": crypto.randomUUID() } });
       setForm({
         customer_id: "",
         payment_type: "cash",

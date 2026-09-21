@@ -1,6 +1,7 @@
 import express from 'express';
-import { query } from '../config/db.js';
+import { query, getConnection } from '../config/db.js';
 import { protect, authorize } from '../middleware/auth.js';
+import { reserveIdempotencyKey, completeIdempotencyKey, abandonIdempotencyKey } from "../services/idempotency.js";
 
 const router = express.Router();
 router.use(protect);
@@ -31,14 +32,25 @@ router.get('/', async (req, res) => {
 });
 
 router.post('/', authorize('admin', 'staff'), async (req, res) => {
+  let connection;
+  let transactionStarted = false;
+  let idempotencyReservation;
   try {
     const { customer_id, sale_id, amount, payment_method, notes } = req.body;
     if (!customer_id || !sale_id || !amount) {
       return res.status(400).json({ message: 'Customer, sale, and amount are required.' });
     }
 
-    const sales = await query(
-      `SELECT * FROM sales WHERE id = ?${req.user.role === 'staff' ? ' AND staff_id = ?' : ''}`,
+    idempotencyReservation = await reserveIdempotencyKey('payment', req.user.id, req.get('Idempotency-Key'));
+    if (idempotencyReservation.response) return res.status(200).json(idempotencyReservation.response);
+    if (idempotencyReservation.processing) return res.status(409).json({ message: 'This payment is already being processed.' });
+
+    connection = await getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
+
+    const [sales] = await connection.query(
+      `SELECT * FROM sales WHERE id = ?${req.user.role === 'staff' ? ' AND staff_id = ?' : ''} FOR UPDATE`,
       req.user.role === 'staff' ? [sale_id, req.user.id] : [sale_id]
     );
     if (!sales.length) {
@@ -53,28 +65,32 @@ router.post('/', authorize('admin', 'staff'), async (req, res) => {
       return res.status(400).json({ message: 'Payment cannot exceed outstanding balance.' });
     }
 
-    const paymentResult = await query(
+    const [paymentResult] = await connection.query(
       'INSERT INTO payments (payment_number, customer_id, sale_id, amount, payment_method, staff_id, notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
       ['PAY-' + Date.now(), customer_id, sale_id, Number(amount), payment_method || 'cash', req.user.id, notes || '']
     );
 
     const newBalance = Number(sale.balance) - Number(amount);
     const nextStatus = newBalance <= 0 ? 'paid' : 'partially_paid';
-    await query('UPDATE sales SET amount_paid = amount_paid + ?, balance = ?, status = ? WHERE id = ?', [Number(amount), newBalance, nextStatus, sale_id]);
+    await connection.query('UPDATE sales SET amount_paid = amount_paid + ?, balance = ?, status = ? WHERE id = ?', [Number(amount), newBalance, nextStatus, sale_id]);
 
     const receiptNumber = `RCT-${Date.now()}`;
-    await ensureReceiptForSale({
-      saleId: sale_id,
-      customerId: customer_id,
-      staffId: req.user.id,
-      receiptNumber
-    });
+    const [existingReceipts] = await connection.query('SELECT id FROM receipts WHERE sale_id = ? LIMIT 1', [sale_id]);
+    if (!existingReceipts.length) await connection.query('INSERT INTO receipts (receipt_number, sale_id, customer_id, staff_id) VALUES (?, ?, ?, ?)', [receiptNumber, sale_id, customer_id, req.user.id]);
 
-    await query('INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)', [req.user.id, 'Payment recorded', 'payment', paymentResult.insertId, `Payment of ${amount} recorded`]);
+    await connection.query('INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)', [req.user.id, 'Payment recorded', 'payment', paymentResult.insertId, `Payment of ${amount} recorded`]);
+    await connection.commit();
+    transactionStarted = false;
 
-    return res.status(201).json({ message: 'Payment recorded successfully.' });
+    const response = { message: 'Payment recorded successfully.' };
+    await completeIdempotencyKey(idempotencyReservation, response);
+    return res.status(201).json(response);
   } catch (error) {
-    return res.status(500).json({ message: error.message || 'Payment failed.' });
+    if (connection && transactionStarted) await connection.rollback();
+    await abandonIdempotencyKey(idempotencyReservation).catch(() => {});
+    return res.status(error.status || (error.code === 'DB_UNAVAILABLE' ? 503 : 400)).json({ message: error.message || 'Payment failed.' });
+  } finally {
+    connection?.release();
   }
 });
 

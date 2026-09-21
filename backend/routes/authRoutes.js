@@ -1,24 +1,23 @@
 import express from "express";
 import crypto from "node:crypto";
-import rateLimit from "express-rate-limit";
 import { OAuth2Client } from "google-auth-library";
 import dotenv from "dotenv";
 import { query } from "../config/db.js";
-import { hashPassword, comparePassword, signToken } from "../utils/helpers.js";
+import { hashPassword, comparePassword } from "../utils/helpers.js";
 import { protect } from "../middleware/auth.js";
+import { getClientIp } from "../utils/clientIp.js";
+import { loginIpLimit, registerFailedLogin, clearFailedLoginLimit } from "../middleware/loginRateLimit.js";
+import { createSessionTokens, rotateSessionTokens, revokeSession } from "../services/authSessions.js";
 
 dotenv.config();
 
 const router = express.Router();
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: {
-    message: "Too many authentication attempts. Please try again later.",
-  },
+const authAttemptLimiter = loginIpLimit;
+const issueTokens = (req, user) => createSessionTokens({
+  user,
+  ip: getClientIp(req),
+  userAgent: req.get("user-agent"),
 });
 
 const safeUser = (user) => ({
@@ -52,7 +51,7 @@ const createUsername = async (email) => {
   return username;
 };
 
-router.post("/register", authLimiter, async (req, res) => {
+router.post("/register", authAttemptLimiter, async (req, res) => {
   try {
     const {
       full_name,
@@ -137,7 +136,7 @@ router.post("/register", authLimiter, async (req, res) => {
   }
 });
 
-router.post("/login", authLimiter, async (req, res) => {
+router.post("/login", authAttemptLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     if (
@@ -157,6 +156,7 @@ router.post("/login", authLimiter, async (req, res) => {
       [identity, identity],
     );
     if (!users.length) {
+      if (!(await registerFailedLogin(req, res))) return;
       return res.status(401).json({ message: "Invalid credentials." });
     }
 
@@ -172,21 +172,19 @@ router.post("/login", authLimiter, async (req, res) => {
 
     const match = await comparePassword(password, user.password);
     if (!match) {
+      if (!(await registerFailedLogin(req, res))) return;
       return res.status(401).json({ message: "Invalid credentials." });
     }
 
-    const token = signToken({
-      id: user.id,
-      role: user.role,
-      email: user.email,
-    });
-    return res.json({ token, user: safeUser(user) });
+    await clearFailedLoginLimit(identity);
+    const tokens = await issueTokens(req, user);
+    return res.json({ ...tokens, user: safeUser(user) });
   } catch (error) {
     return res.status(500).json({ message: error.message || "Login failed." });
   }
 });
 
-router.post("/google", authLimiter, async (req, res) => {
+router.post("/google", authAttemptLimiter, async (req, res) => {
   try {
     const { credential } = req.body;
     if (
@@ -295,18 +293,32 @@ router.post("/google", authLimiter, async (req, res) => {
       );
     }
 
-    const token = signToken({
-      id: user.id,
-      role: user.role,
-      email: user.email,
-    });
-    return res.json({ token, user: safeUser(user) });
+    const tokens = await issueTokens(req, user);
+    return res.json({ ...tokens, user: safeUser(user) });
   } catch (error) {
     console.error("Google authentication failed:", error.message);
     return res
       .status(401)
       .json({ message: "Google authentication failed. Please try again." });
   }
+});
+
+router.post("/refresh", authAttemptLimiter, async (req, res) => {
+  try {
+    if (typeof req.body?.refreshToken !== "string")
+      return res.status(400).json({ message: "Refresh token is required." });
+    const tokens = await rotateSessionTokens(req.body.refreshToken, {
+      ip: getClientIp(req), userAgent: req.get("user-agent"),
+    });
+    return res.json(tokens);
+  } catch (error) {
+    return res.status(error.status || 401).json({ message: error.status === 503 ? "Authentication is temporarily unavailable." : "Your session has expired. Please sign in again." });
+  }
+});
+
+router.post("/logout", async (req, res) => {
+  await revokeSession(req.body?.refreshToken);
+  return res.status(204).end();
 });
 
 router.get("/me", protect, async (req, res) => {

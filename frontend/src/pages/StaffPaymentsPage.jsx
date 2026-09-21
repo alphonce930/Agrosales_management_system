@@ -114,7 +114,7 @@ export default function StaffPaymentsPage() {
         amount: Number(form.amount),
         payment_method: form.payment_method,
         notes: form.notes,
-      });
+      }, { headers: { "Idempotency-Key": crypto.randomUUID() } });
 
       const [paymentRes, receiptRes] = await Promise.all([
         api.get("/payments"),

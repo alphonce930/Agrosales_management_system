@@ -1,6 +1,7 @@
 import express from "express";
 import { query, getConnection } from "../config/db.js";
 import { protect, authorize } from "../middleware/auth.js";
+import { reserveIdempotencyKey, completeIdempotencyKey, abandonIdempotencyKey } from "../services/idempotency.js";
 
 const router = express.Router();
 router.use(protect);
@@ -98,6 +99,7 @@ router.get("/", async (req, res) => {
 router.post("/", authorize("admin", "staff"), async (req, res) => {
   let connection;
   let transactionStarted = false;
+  let idempotencyReservation;
   try {
     const {
       customer_id,
@@ -111,6 +113,14 @@ router.post("/", authorize("admin", "staff"), async (req, res) => {
       throw new Error("A customer must be selected.");
     if (!Array.isArray(products) || !products.length)
       throw new Error("At least one product is required to complete a sale.");
+
+    idempotencyReservation = await reserveIdempotencyKey(
+      "sale", req.user.id, req.get("Idempotency-Key"),
+    );
+    if (idempotencyReservation.response)
+      return res.status(200).json(idempotencyReservation.response);
+    if (idempotencyReservation.processing)
+      return res.status(409).json({ message: "This sale is already being processed." });
 
     connection = await getConnection();
     await connection.beginTransaction();
@@ -289,13 +299,17 @@ router.post("/", authorize("admin", "staff"), async (req, res) => {
       "SELECT * FROM sale_items WHERE sale_id = ? ORDER BY id",
       [saleId],
     );
-    return res.status(201).json({
+    const response = {
       message: "Sale completed successfully.",
       sale: completedSaleRows[0],
       items: completedItemRows,
-    });
+    };
+    await completeIdempotencyKey(idempotencyReservation, response);
+    return res.status(201).json(response);
   } catch (error) {
     if (connection && transactionStarted) await connection.rollback();
+    // A failed transaction may safely be retried with the same key.
+    await abandonIdempotencyKey(idempotencyReservation).catch(() => {});
     const status =
       error.status || (error.code === "DB_UNAVAILABLE" ? 503 : 400);
     return res

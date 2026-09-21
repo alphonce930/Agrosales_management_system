@@ -1,5 +1,5 @@
-import jwt from 'jsonwebtoken';
 import { query } from '../config/db.js';
+import { verifyAccessToken } from "../utils/helpers.js";
 
 export const protect = async (req, res, next) => {
   let decoded;
@@ -10,8 +10,8 @@ export const protect = async (req, res, next) => {
     }
 
     const token = authHeader.split(' ')[1];
-    if (!token || !process.env.JWT_SECRET) throw new Error('Invalid session.');
-    decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+    if (!token || !(process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET)) throw new Error('Invalid session.');
+    decoded = verifyAccessToken(token);
   } catch (error) {
     return res.status(401).json({ message: 'Your session has expired. Please sign in again.' });
   }

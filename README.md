@@ -129,6 +129,10 @@ Add these production environment variables in Vercel:
 NODE_ENV=production
 DATABASE_URL=postgresql://<user>:<password>@<host>:5432/<database>?sslmode=require
 JWT_SECRET=<32+ random characters>
+JWT_ACCESS_SECRET=<32+ random characters>
+JWT_REFRESH_SECRET=<different 32+ random characters>
+JWT_ACCESS_EXPIRES_IN=15m
+JWT_REFRESH_EXPIRES_IN=7d
 ADMIN_EMAIL=admin@goldenagro.com
 ADMIN_PASSWORD=<strong admin password>
 SUPER_ADMIN_EMAIL=superadmin@goldenagro.com
@@ -139,6 +143,15 @@ GOOGLE_CLIENT_SECRET=
 ALLOW_MEMORY_DB=false
 SEED_DEFAULT_USERS=false
 DB_SSL=true
+DB_CONNECTION_LIMIT=5
+DB_IDLE_TIMEOUT_MS=30000
+UPSTASH_REDIS_REST_URL=<Upstash REST URL>
+UPSTASH_REDIS_REST_TOKEN=<Upstash REST token>
+LOGIN_RATE_LIMIT=5
+LOGIN_RATE_WINDOW=5m
+IP_RATE_LIMIT=20
+IP_RATE_WINDOW=5m
+IDEMPOTENCY_TTL_SECONDS=86400
 ```
 
 For Neon, copy the connection string from the Neon dashboard and paste it into `DATABASE_URL`. Keep the app on server-side env vars only; never expose `JWT_SECRET`, `ADMIN_PASSWORD`, or `GOOGLE_CLIENT_SECRET` to the browser.
@@ -156,6 +169,8 @@ Apply `backend/database/schema.sql` to a blank Neon database before the first de
 - Do not set `SEED_DEFAULT_USERS=true` in production.
 - Keep `FRONTEND_URL` restricted to the exact frontend origin used by the app.
 - Use HTTPS everywhere in production.
+- Use your provider's pooled PostgreSQL connection URL where available. The backend pool defaults to 5 connections per serverless instance; do not raise it without accounting for Vercel concurrency and the database connection cap.
+- Redis is required in production for refresh sessions, distributed login limits, and sale/payment idempotency. Store its REST URL and token only in Vercel's backend environment settings.
 
 ## License
 

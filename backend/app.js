@@ -19,6 +19,9 @@ import { securityHeaders, validateRequestBody } from "./middleware/security.js";
 dotenv.config();
 
 const app = express();
+// Vercel supplies the client address through one trusted proxy hop. Never
+// read x-forwarded-for directly in routes.
+app.set("trust proxy", process.env.VERCEL ? 1 : process.env.TRUST_PROXY === "true");
 const projectRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
@@ -84,6 +87,7 @@ app.get("*", (req, res, next) => {
 app.use((err, req, res, next) => {
   const status =
     err.status ||
+    (err.code === "DB_UNAVAILABLE" ? 503 : undefined) ||
     (err.message === "Origin is not allowed by CORS." ? 403 : 500);
   if (status >= 500) console.error(err);
   res
