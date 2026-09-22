@@ -81,11 +81,17 @@ export default function LoginPage() {
 
         <form className="mt-8 space-y-5" onSubmit={onSubmit}>
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">
+            <label
+              htmlFor="email"
+              className="mb-2 block text-sm font-medium text-slate-700"
+            >
               Email or Username
             </label>
             <input
+              id="email"
+              name="email"
               type="text"
+              autoComplete="username"
               className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-brand-deep"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
@@ -93,12 +99,18 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">
+            <label
+              htmlFor="password"
+              className="mb-2 block text-sm font-medium text-slate-700"
+            >
               Password
             </label>
             <div className="relative">
               <input
+                id="password"
+                name="password"
                 type={showPassword ? "text" : "password"}
+                autoComplete="current-password"
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 pr-11 outline-none focus:border-brand-deep"
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
@@ -107,6 +119,7 @@ export default function LoginPage() {
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
                 className="absolute right-3 top-3 text-slate-500"
+                aria-label={showPassword ? "Hide password" : "Show password"}
               >
                 {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
               </button>

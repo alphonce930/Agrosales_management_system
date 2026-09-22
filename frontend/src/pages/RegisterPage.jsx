@@ -138,45 +138,76 @@ export default function RegisterPage() {
           onSubmit={handleSubmit}
         >
           <div className="md:col-span-2">
-            <label className="mb-2 block text-sm font-medium text-slate-700">
+            <label
+              htmlFor="full_name"
+              className="mb-2 block text-sm font-medium text-slate-700"
+            >
               Full name
             </label>
             <input
+              id="full_name"
+              name="full_name"
+              autoComplete="name"
               className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
               value={form.full_name}
               onChange={(e) => setForm({ ...form, full_name: e.target.value })}
             />
           </div>
           <div>
-            <label className="mb-2 block text-sm font-medium">Username</label>
+            <label
+              htmlFor="username"
+              className="mb-2 block text-sm font-medium"
+            >
+              Username
+            </label>
             <input
+              id="username"
+              name="username"
+              autoComplete="username"
               className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
               value={form.username}
               onChange={(e) => setForm({ ...form, username: e.target.value })}
             />
           </div>
           <div>
-            <label className="mb-2 block text-sm font-medium">Email</label>
+            <label htmlFor="email" className="mb-2 block text-sm font-medium">
+              Email
+            </label>
             <input
+              id="email"
+              name="email"
               type="email"
+              autoComplete="email"
               className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
             />
           </div>
           <div>
-            <label className="mb-2 block text-sm font-medium">
+            <label htmlFor="phone" className="mb-2 block text-sm font-medium">
               Phone number
             </label>
             <input
+              id="phone"
+              name="phone"
+              type="tel"
+              autoComplete="tel"
               className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
               value={form.phone}
               onChange={(e) => setForm({ ...form, phone: e.target.value })}
             />
           </div>
           <div>
-            <label className="mb-2 block text-sm font-medium">Location</label>
+            <label
+              htmlFor="location"
+              className="mb-2 block text-sm font-medium"
+            >
+              Location
+            </label>
             <input
+              id="location"
+              name="location"
+              autoComplete="street-address"
               className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
               value={form.location}
               onChange={(e) => setForm({ ...form, location: e.target.value })}
@@ -201,7 +232,9 @@ export default function RegisterPage() {
             <div className="relative">
               <input
                 id="registration-password"
+                name="password"
                 type={showPassword ? "text" : "password"}
+                autoComplete="new-password"
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 pr-11"
                 value={form.password}
                 onChange={(e) => updatePassword(e.target.value)}
@@ -252,7 +285,9 @@ export default function RegisterPage() {
             <div className="relative">
               <input
                 id="registration-confirm-password"
+                name="confirmPassword"
                 type={showConfirmPassword ? "text" : "password"}
+                autoComplete="new-password"
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 pr-11"
                 value={form.confirmPassword}
                 onChange={(e) =>
