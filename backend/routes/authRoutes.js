@@ -235,7 +235,7 @@ router.post("/register", async (req, res) => {
   }
 });
 
-router.post("/login", loginAttemptLimiter, async (req, res) => {
+router.post("/login", async (req, res) => {
   try {
     const deviceId = resolveDeviceId(req, res, { createIfMissing: true });
     const { email, password } = req.body;
