@@ -3,11 +3,26 @@ import crypto from "node:crypto";
 import { OAuth2Client } from "google-auth-library";
 import dotenv from "dotenv";
 import { query } from "../config/db.js";
-import { hashPassword, comparePassword, getRefreshTtlSeconds } from "../utils/helpers.js";
+import {
+  hashPassword,
+  comparePassword,
+  getRefreshTtlSeconds,
+} from "../utils/helpers.js";
 import { protect } from "../middleware/auth.js";
 import { getClientIp } from "../utils/clientIp.js";
-import { loginIpLimit, registerFailedLogin, clearFailedLoginLimit } from "../middleware/loginRateLimit.js";
-import { createSessionTokens, rotateSessionTokens, revokeSession } from "../services/authSessions.js";
+import {
+  loginIpLimit,
+  registerFailedLogin,
+  clearFailedLoginLimit,
+  resolveDeviceId,
+  getDeviceCookieName,
+} from "../middleware/loginRateLimit.js";
+import {
+  createSessionTokens,
+  rotateSessionTokens,
+  revokeSession,
+  revokeUserSessions,
+} from "../services/authSessions.js";
 
 dotenv.config();
 
@@ -16,11 +31,38 @@ const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const authAttemptLimiter = loginIpLimit;
 
 const refreshCookieName = () =>
-  process.env.NODE_ENV === "production" ? "__Host-agro_refresh" : "agro_refresh";
+  process.env.NODE_ENV === "production"
+    ? "__Host-agro_refresh"
+    : "agro_refresh";
+
+const setDeviceCookie = (res, deviceId) =>
+  res.cookie(getDeviceCookieName(), deviceId, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: (process.env.REFRESH_COOKIE_SAME_SITE || "lax").toLowerCase(),
+    path: "/",
+    maxAge: 90 * 24 * 60 * 60 * 1000,
+  });
+
+const readDeviceCookie = (req) => {
+  const value = req.headers.cookie
+    ?.split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${getDeviceCookieName()}=`))
+    ?.slice(getDeviceCookieName().length + 1);
+  if (!value) return null;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
+};
 
 const refreshCookieOptions = () => {
   const production = process.env.NODE_ENV === "production";
-  const sameSite = (process.env.REFRESH_COOKIE_SAME_SITE || (production ? "none" : "lax")).toLowerCase();
+  const sameSite = (
+    process.env.REFRESH_COOKIE_SAME_SITE || (production ? "none" : "lax")
+  ).toLowerCase();
   return {
     httpOnly: true,
     secure: production || sameSite === "none",
@@ -37,7 +79,11 @@ const readCookie = (req, name) => {
     .find((part) => part.startsWith(`${name}=`))
     ?.slice(name.length + 1);
   if (!value) return null;
-  try { return decodeURIComponent(value); } catch { return null; }
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
 };
 
 const setRefreshCookie = (res, refreshToken) =>
@@ -50,17 +96,32 @@ const clearRefreshCookie = (res) =>
     expires: new Date(0),
   });
 
+const clearDeviceCookie = (res) =>
+  res.clearCookie(getDeviceCookieName(), {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: (process.env.REFRESH_COOKIE_SAME_SITE || "lax").toLowerCase(),
+    path: "/",
+    expires: new Date(0),
+  });
+
 const sendAuthenticated = (res, tokens, user) => {
   setRefreshCookie(res, tokens.refreshToken);
   // Refresh credentials deliberately never enter JavaScript/localStorage.
-  return res.json(user ? { token: tokens.token, user: safeUser(user) } : { token: tokens.token });
+  return res.json(
+    user
+      ? { token: tokens.token, user: safeUser(user) }
+      : { token: tokens.token },
+  );
 };
 
-const issueTokens = (req, user) => createSessionTokens({
-  user,
-  ip: getClientIp(req),
-  userAgent: req.get("user-agent"),
-});
+const issueTokens = (req, user, deviceId) =>
+  createSessionTokens({
+    user,
+    deviceId,
+    ip: getClientIp(req),
+    userAgent: req.get("user-agent"),
+  });
 
 const safeUser = (user) => ({
   id: user.id,
@@ -119,12 +180,10 @@ router.post("/register", authAttemptLimiter, async (req, res) => {
       !/\d/.test(password) ||
       !/[!@#$%^&*]/.test(password)
     ) {
-      return res
-        .status(400)
-        .json({
-          message:
-            "Password must be at least 8 characters and contain uppercase, lowercase, a number, and a special character.",
-        });
+      return res.status(400).json({
+        message:
+          "Password must be at least 8 characters and contain uppercase, lowercase, a number, and a special character.",
+      });
     }
 
     if (password !== confirmPassword) {
@@ -166,11 +225,9 @@ router.post("/register", authAttemptLimiter, async (req, res) => {
       ],
     );
 
-    return res
-      .status(201)
-      .json({
-        message: "Registration successful. Awaiting admin verification.",
-      });
+    return res.status(201).json({
+      message: "Registration successful. Awaiting admin verification.",
+    });
   } catch (error) {
     return res
       .status(500)
@@ -180,6 +237,7 @@ router.post("/register", authAttemptLimiter, async (req, res) => {
 
 router.post("/login", authAttemptLimiter, async (req, res) => {
   try {
+    const deviceId = resolveDeviceId(req, res, { createIfMissing: true });
     const { email, password } = req.body;
     if (
       typeof email !== "string" ||
@@ -198,32 +256,34 @@ router.post("/login", authAttemptLimiter, async (req, res) => {
       [identity, identity],
     );
     if (!users.length) {
-      if (!(await registerFailedLogin(req, res))) return;
+      if (!(await registerFailedLogin(req, res, deviceId))) return;
       return res.status(401).json({ message: "Invalid credentials." });
     }
 
     const user = users[0];
     if (user.status !== "verified") {
-      return res
-        .status(403)
-        .json({
-          message:
-            "Your account is pending or suspended. Please contact the admin.",
-        });
+      return res.status(403).json({
+        message:
+          "Your account is pending or suspended. Please contact the admin.",
+      });
     }
 
     const match = await comparePassword(password, user.password);
     if (!match) {
-      if (!(await registerFailedLogin(req, res))) return;
+      if (!(await registerFailedLogin(req, res, deviceId))) return;
       return res.status(401).json({ message: "Invalid credentials." });
     }
 
-    await clearFailedLoginLimit(identity);
-    const tokens = await issueTokens(req, user);
+    await clearFailedLoginLimit(identity, deviceId);
+    const tokens = await issueTokens(req, user, deviceId);
+    setDeviceCookie(res, deviceId);
     return sendAuthenticated(res, tokens, user);
   } catch (error) {
     if (error.status === 503) {
-      return res.status(503).json({ message: "Authentication is temporarily unavailable. Please try again shortly." });
+      return res.status(503).json({
+        message:
+          "Authentication is temporarily unavailable. Please try again shortly.",
+      });
     }
     console.error("Login failed:", error.message);
     return res.status(500).json({ message: "Login failed. Please try again." });
@@ -232,6 +292,7 @@ router.post("/login", authAttemptLimiter, async (req, res) => {
 
 router.post("/google", authAttemptLimiter, async (req, res) => {
   try {
+    const deviceId = resolveDeviceId(req, res, { createIfMissing: true });
     const { credential } = req.body;
     if (
       typeof credential !== "string" ||
@@ -268,12 +329,10 @@ router.post("/google", authAttemptLimiter, async (req, res) => {
 
     if (user) {
       if (user.status !== "verified") {
-        return res
-          .status(403)
-          .json({
-            message:
-              "This account is pending or suspended. Please contact the admin.",
-          });
+        return res.status(403).json({
+          message:
+            "This account is pending or suspended. Please contact the admin.",
+        });
       }
 
       await query(
@@ -344,7 +403,10 @@ router.post("/google", authAttemptLimiter, async (req, res) => {
   } catch (error) {
     console.error("Google authentication failed:", error.message);
     if (error.status === 503) {
-      return res.status(503).json({ message: "Authentication is temporarily unavailable. Please try again shortly." });
+      return res.status(503).json({
+        message:
+          "Authentication is temporarily unavailable. Please try again shortly.",
+      });
     }
     return res
       .status(401)
@@ -361,17 +423,35 @@ router.post("/refresh", async (req, res) => {
     if (!refreshToken)
       return res.status(400).json({ message: "Refresh token is required." });
     const tokens = await rotateSessionTokens(refreshToken, {
-      ip: getClientIp(req), userAgent: req.get("user-agent"),
+      ip: getClientIp(req),
+      userAgent: req.get("user-agent"),
     });
+    const deviceId =
+      readDeviceCookie(req) ||
+      resolveDeviceId(req, res, { createIfMissing: true });
+    if (deviceId) setDeviceCookie(res, deviceId);
     return sendAuthenticated(res, tokens);
   } catch (error) {
-    return res.status(error.status || 401).json({ message: error.status === 503 ? "Authentication is temporarily unavailable." : "Your session has expired. Please sign in again." });
+    return res.status(error.status || 401).json({
+      message:
+        error.status === 503
+          ? "Authentication is temporarily unavailable."
+          : "Your session has expired. Please sign in again.",
+    });
   }
 });
 
 router.post("/logout", async (req, res) => {
   await revokeSession(readCookie(req, refreshCookieName()));
   clearRefreshCookie(res);
+  clearDeviceCookie(res);
+  return res.status(204).end();
+});
+
+router.post("/logout-all", protect, async (req, res) => {
+  await revokeUserSessions(req.user.id);
+  clearRefreshCookie(res);
+  clearDeviceCookie(res);
   return res.status(204).end();
 });
 
