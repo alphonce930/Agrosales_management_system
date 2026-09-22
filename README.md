@@ -41,12 +41,18 @@ Required backend values for local development:
 
 - `DATABASE_URL` or the legacy `DB_*` variables for a local Postgres instance
 - `JWT_SECRET` with a value of at least 16 random characters
+- `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` for access-token and refresh-token validation
+- `JWT_ACCESS_EXPIRES_IN` and `JWT_REFRESH_EXPIRES_IN` for token lifetime control
 - `ADMIN_EMAIL` and `ADMIN_PASSWORD` for the verified system administrator
 - `SUPER_ADMIN_EMAIL` and `SUPER_ADMIN_PASSWORD` for the verified super administrator
 - `FRONTEND_URL` pointing to the frontend origin
 - `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` when Google sign-in is enabled
 - `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` for login, refresh,
   logout, and distributed rate limiting. These are required for authentication.
+- `REFRESH_COOKIE_SAME_SITE` set to `lax` locally or `none` for HTTPS cross-site
+- `DEVICE_COOKIE_NAME` for the secure HttpOnly device identifier cookie (default is `__Host-agro_device` in production and `agro_device` locally)
+- device-specific auth limits such as `MAX_LOGIN_ATTEMPTS_PER_DEVICE`, `LOGIN_ATTEMPT_WINDOW_SECONDS`, and `DEVICE_LOCKOUT_SECONDS`
+- optional anti-abuse settings such as `IP_RATE_LIMIT`, `IP_RATE_WINDOW`, `PREAUTH_LOGIN_RATE_LIMIT`, and `PREAUTH_LOGIN_WINDOW`
 
 ### 3. Start PostgreSQL and the app
 
@@ -178,10 +184,16 @@ DB_IDLE_TIMEOUT_MS=30000
 UPSTASH_REDIS_REST_URL=<Upstash REST URL>
 UPSTASH_REDIS_REST_TOKEN=<Upstash REST token>
 REFRESH_COOKIE_SAME_SITE=none
+DEVICE_COOKIE_NAME=__Host-agro_device
+MAX_LOGIN_ATTEMPTS_PER_DEVICE=5
+LOGIN_ATTEMPT_WINDOW_SECONDS=900
+DEVICE_LOCKOUT_SECONDS=900
 LOGIN_RATE_LIMIT=5
 LOGIN_RATE_WINDOW=5m
 IP_RATE_LIMIT=100
 IP_RATE_WINDOW=5m
+PREAUTH_LOGIN_RATE_LIMIT=20
+PREAUTH_LOGIN_WINDOW=15m
 IDEMPOTENCY_TTL_SECONDS=86400
 ```
 
@@ -199,6 +211,9 @@ Apply `backend/database/schema.sql` to a blank Neon database before the first de
 - Do not enable `ALLOW_MEMORY_DB=true` outside local development.
 - Do not set `SEED_DEFAULT_USERS=true` in production.
 - Keep `FRONTEND_URL` restricted to the exact frontend origin used by the app.
+- Device login limits are intentionally per-device and per-session in Redis. Do not replace them with a single user-wide counter.
+- The secure device cookie is HttpOnly and should not be modified by frontend code; the backend creates and validates the device ID and stores it with the session metadata.
+- Use a separate pre-auth rate limit for unknown/new devices so a user cannot bypass device lockouts by deleting the cookie and creating a fresh device identifier.
 - Vercel preview URLs are different origins. To test one with this credentialed
   API, append that exact preview URL to the backend's `FRONTEND_URL`, separated
   by a comma, then redeploy the backend. Do not use `*` with credentials.

@@ -28,7 +28,7 @@ dotenv.config();
 
 const router = express.Router();
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-const authAttemptLimiter = loginIpLimit;
+const loginAttemptLimiter = loginIpLimit;
 
 const refreshCookieName = () =>
   process.env.NODE_ENV === "production"
@@ -154,7 +154,7 @@ const createUsername = async (email) => {
   return username;
 };
 
-router.post("/register", authAttemptLimiter, async (req, res) => {
+router.post("/register", async (req, res) => {
   try {
     const {
       full_name,
@@ -235,7 +235,7 @@ router.post("/register", authAttemptLimiter, async (req, res) => {
   }
 });
 
-router.post("/login", authAttemptLimiter, async (req, res) => {
+router.post("/login", loginAttemptLimiter, async (req, res) => {
   try {
     const deviceId = resolveDeviceId(req, res, { createIfMissing: true });
     const { email, password } = req.body;
@@ -290,7 +290,7 @@ router.post("/login", authAttemptLimiter, async (req, res) => {
   }
 });
 
-router.post("/google", authAttemptLimiter, async (req, res) => {
+router.post("/google", async (req, res) => {
   try {
     const deviceId = resolveDeviceId(req, res, { createIfMissing: true });
     const { credential } = req.body;

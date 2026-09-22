@@ -72,7 +72,13 @@ export const loginIpLimit = async (req, res, next) => {
     const limiter = getLoginIpRatelimit();
     if (!limiter) return next();
     const result = await limiter.limit(getClientIp(req));
-    if (!result.allowed) return res.status(429).json(genericMessage);
+    if (!result.allowed) {
+      const reset = result.reset
+        ? Math.ceil((result.reset - Date.now()) / 1000)
+        : 60;
+      res.setHeader("Retry-After", String(reset));
+      return res.status(429).json(genericMessage);
+    }
     return next();
   } catch (error) {
     console.error("Login IP rate-limit unavailable", error);

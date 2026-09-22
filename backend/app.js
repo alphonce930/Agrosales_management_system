@@ -15,6 +15,7 @@ import adminRoutes from "./routes/adminRoutes.js";
 import superAdminRoutes from "./routes/superAdminRoutes.js";
 import analyticsRoutes from "./routes/analyticsRoutes.js";
 import { securityHeaders, validateRequestBody } from "./middleware/security.js";
+import { logAuthEvent } from "./utils/authLogger.js";
 
 dotenv.config();
 
@@ -33,6 +34,7 @@ const frontendDist = path.join(projectRoot, "frontend", "dist");
 // Credentialed CORS cannot use a wildcard. Keep the production frontend
 // trusted by default and configure preview origins explicitly in FRONTEND_URL.
 const allowedOrigins = [
+  "https://agrosales-management-system-p3xt.vercel.app",
   "https://agrosales-management-system.vercel.app",
   "http://localhost:5173",
   ...(process.env.FRONTEND_URL || "").split(","),
@@ -49,6 +51,9 @@ app.use(
       return callback(new Error("Origin is not allowed by CORS."));
     },
     credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    maxAge: 86400, // 24 hours preflight cache
   }),
 );
 app.use(securityHeaders);
@@ -59,10 +64,12 @@ app.use(
     standardHeaders: true,
     legacyHeaders: false,
     message: { message: "Too many requests. Please try again later." },
+    skip: (req) => req.method === "OPTIONS",
   }),
 );
 app.use(express.json({ limit: "1mb" }));
 app.use(validateRequestBody);
+app.use(logAuthEvent);
 if (process.env.NODE_ENV !== "production") app.use(morgan("dev"));
 
 app.get("/", (req, res) => {

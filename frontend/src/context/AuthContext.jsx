@@ -167,31 +167,53 @@ export const AuthProvider = ({ children }) => {
   }, [token, user]);
 
   const login = async (payload) => {
-    const { data } = await api.post("/auth/login", payload);
-    localStorage.setItem("token", data.token);
-    localStorage.removeItem("refresh_token"); // remove credentials saved by older clients
-    localStorage.setItem("auth_user", JSON.stringify(data.user));
-    localStorage.setItem(ACTIVITY_STORAGE_KEY, String(Date.now()));
-    setToken(data.token);
-    setUser(data.user);
-    setSessionWarning(false);
-    setSessionMessage("");
-    api.defaults.headers.common.Authorization = `Bearer ${data.token}`;
-    return data;
+    try {
+      const { data } = await api.post("/auth/login", payload);
+      localStorage.setItem("token", data.token);
+      localStorage.removeItem("refresh_token"); // remove credentials saved by older clients
+      localStorage.setItem("auth_user", JSON.stringify(data.user));
+      localStorage.setItem(ACTIVITY_STORAGE_KEY, String(Date.now()));
+      setToken(data.token);
+      setUser(data.user);
+      setSessionWarning(false);
+      setSessionMessage("");
+      api.defaults.headers.common.Authorization = `Bearer ${data.token}`;
+      return data;
+    } catch (error) {
+      if (error.response?.status === 429) {
+        const retryAfter = error.response.headers["retry-after"];
+        const message = retryAfter
+          ? `Too many login attempts. Please try again in ${retryAfter} seconds.`
+          : "Too many login attempts. Please try again later.";
+        throw { ...error, response: { ...error.response, data: { message } } };
+      }
+      throw error;
+    }
   };
 
   const googleLogin = async (credential) => {
-    const { data } = await api.post("/auth/google", { credential });
-    localStorage.setItem("token", data.token);
-    localStorage.removeItem("refresh_token");
-    localStorage.setItem("auth_user", JSON.stringify(data.user));
-    localStorage.setItem(ACTIVITY_STORAGE_KEY, String(Date.now()));
-    setToken(data.token);
-    setUser(data.user);
-    setSessionWarning(false);
-    setSessionMessage("");
-    api.defaults.headers.common.Authorization = `Bearer ${data.token}`;
-    return data;
+    try {
+      const { data } = await api.post("/auth/google", { credential });
+      localStorage.setItem("token", data.token);
+      localStorage.removeItem("refresh_token");
+      localStorage.setItem("auth_user", JSON.stringify(data.user));
+      localStorage.setItem(ACTIVITY_STORAGE_KEY, String(Date.now()));
+      setToken(data.token);
+      setUser(data.user);
+      setSessionWarning(false);
+      setSessionMessage("");
+      api.defaults.headers.common.Authorization = `Bearer ${data.token}`;
+      return data;
+    } catch (error) {
+      if (error.response?.status === 429) {
+        const retryAfter = error.response.headers["retry-after"];
+        const message = retryAfter
+          ? `Too many login attempts. Please try again in ${retryAfter} seconds.`
+          : "Too many login attempts. Please try again later.";
+        throw { ...error, response: { ...error.response, data: { message } } };
+      }
+      throw error;
+    }
   };
 
   const logout = () => {
