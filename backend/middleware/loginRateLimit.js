@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { getRedis, getLoginIpRatelimit } from "../config/redis.js";
+import { Ratelimit } from "@upstash/ratelimit";
 import { durationToSeconds } from "../utils/duration.js";
 import { getClientIp } from "../utils/clientIp.js";
 
@@ -85,6 +86,39 @@ export const loginIpLimit = async (req, res, next) => {
     return res
       .status(503)
       .json({ message: "Authentication is temporarily unavailable." });
+  }
+};
+
+export const registerIpLimit = async (req, res, next) => {
+  try {
+    const client = getRedis();
+    if (!client) return next();
+
+    // Use a separate, more lenient rate limit for registration
+    const limiter = new Ratelimit({
+      redis: client,
+      limiter: Ratelimit.fixedWindow(
+        Number(process.env.REGISTER_RATE_LIMIT) || 10,
+        process.env.REGISTER_RATE_WINDOW || "1h",
+      ),
+      prefix: "auth:register:ip",
+    });
+
+    const result = await limiter.limit(getClientIp(req));
+    if (!result.allowed) {
+      const reset = result.reset
+        ? Math.ceil((result.reset - Date.now()) / 1000)
+        : 3600;
+      res.setHeader("Retry-After", String(reset));
+      return res.status(429).json({
+        message: "Too many registration attempts. Please try again later.",
+      });
+    }
+    return next();
+  } catch (error) {
+    console.error("Register IP rate-limit unavailable", error);
+    // Don't block registration if rate limiting fails
+    return next();
   }
 };
 

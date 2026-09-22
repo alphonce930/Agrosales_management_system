@@ -12,6 +12,7 @@ import { protect } from "../middleware/auth.js";
 import { getClientIp } from "../utils/clientIp.js";
 import {
   loginIpLimit,
+  registerIpLimit,
   registerFailedLogin,
   clearFailedLoginLimit,
   resolveDeviceId,
@@ -29,6 +30,7 @@ dotenv.config();
 const router = express.Router();
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const loginAttemptLimiter = loginIpLimit;
+const registerAttemptLimiter = registerIpLimit;
 
 const refreshCookieName = () =>
   process.env.NODE_ENV === "production"
@@ -154,7 +156,7 @@ const createUsername = async (email) => {
   return username;
 };
 
-router.post("/register", async (req, res) => {
+router.post("/register", registerAttemptLimiter, async (req, res) => {
   try {
     const {
       full_name,
