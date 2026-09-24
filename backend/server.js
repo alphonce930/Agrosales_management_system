@@ -78,6 +78,8 @@ const bootstrap = async () => {
         'ALTER TABLE "customers" ADD COLUMN IF NOT EXISTS created_by INTEGER NULL',
       );
       await ensureIndex("customers", "idx_customers_created_by", "created_by");
+      await ensureIndex("users", "idx_users_email", "email");
+      await ensureIndex("users", "idx_users_username", "username");
       await ensureColumn("receipts", "notes", "TEXT NULL");
       await query(
         'ALTER TABLE "products" ADD COLUMN IF NOT EXISTS pieces_per_box INTEGER NOT NULL DEFAULT 1',
