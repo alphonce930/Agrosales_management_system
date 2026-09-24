@@ -4,6 +4,9 @@ import { Ratelimit } from "@upstash/ratelimit";
 let redis = null;
 let initialized = false;
 let loginIpRatelimit = null;
+let publicApiRatelimit = null;
+let authenticatedApiRatelimit = null;
+let adminApiRatelimit = null;
 
 const redisError = (action, error) => {
   // Upstash is a REST client, so there is no persistent socket to reconnect.
@@ -36,7 +39,9 @@ export const getRedis = () => {
 export const initializeRedis = async () => {
   const client = getRedis();
   if (!client) {
-    console.warn("Redis is not configured; refresh-session endpoints will return 503.");
+    console.warn(
+      "Redis is not configured; refresh-session endpoints will return 503.",
+    );
     return false;
   }
 
@@ -57,9 +62,12 @@ export const runRedis = async (action, operation) => {
     return await operation();
   } catch (error) {
     redisError(action, error);
-    throw Object.assign(new Error("Authentication is temporarily unavailable."), {
-      status: 503,
-    });
+    throw Object.assign(
+      new Error("Authentication is temporarily unavailable."),
+      {
+        status: 503,
+      },
+    );
   }
 };
 
@@ -71,7 +79,56 @@ export const getLoginIpRatelimit = () => {
     // for offices, shops, and mobile carriers where many valid users share IP.
     const limit = Number(process.env.IP_RATE_LIMIT) || 100;
     const window = process.env.IP_RATE_WINDOW || "5m";
-    loginIpRatelimit = new Ratelimit({ redis: client, limiter: Ratelimit.fixedWindow(limit, window), prefix: "auth:login:ip" });
+    loginIpRatelimit = new Ratelimit({
+      redis: client,
+      limiter: Ratelimit.fixedWindow(limit, window),
+      prefix: "auth:login:ip",
+    });
   }
   return loginIpRatelimit;
+};
+
+export const getPublicApiRatelimit = () => {
+  const client = getRedis();
+  if (!client) return null;
+  if (!publicApiRatelimit) {
+    const limit = Number(process.env.PUBLIC_API_RATE_LIMIT) || 100;
+    const window = process.env.PUBLIC_API_RATE_WINDOW || "1h";
+    publicApiRatelimit = new Ratelimit({
+      redis: client,
+      limiter: Ratelimit.fixedWindow(limit, window),
+      prefix: "api:public",
+    });
+  }
+  return publicApiRatelimit;
+};
+
+export const getAuthenticatedApiRatelimit = () => {
+  const client = getRedis();
+  if (!client) return null;
+  if (!authenticatedApiRatelimit) {
+    const limit = Number(process.env.AUTHENTICATED_API_RATE_LIMIT) || 500;
+    const window = process.env.AUTHENTICATED_API_RATE_WINDOW || "1h";
+    authenticatedApiRatelimit = new Ratelimit({
+      redis: client,
+      limiter: Ratelimit.fixedWindow(limit, window),
+      prefix: "api:authenticated",
+    });
+  }
+  return authenticatedApiRatelimit;
+};
+
+export const getAdminApiRatelimit = () => {
+  const client = getRedis();
+  if (!client) return null;
+  if (!adminApiRatelimit) {
+    const limit = Number(process.env.ADMIN_API_RATE_LIMIT) || 200;
+    const window = process.env.ADMIN_API_RATE_WINDOW || "1h";
+    adminApiRatelimit = new Ratelimit({
+      redis: client,
+      limiter: Ratelimit.fixedWindow(limit, window),
+      prefix: "api:admin",
+    });
+  }
+  return adminApiRatelimit;
 };

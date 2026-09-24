@@ -14,8 +14,17 @@ import receiptRoutes from "./routes/receiptRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import superAdminRoutes from "./routes/superAdminRoutes.js";
 import analyticsRoutes from "./routes/analyticsRoutes.js";
-import { securityHeaders, validateRequestBody } from "./middleware/security.js";
+import {
+  securityHeaders,
+  validateRequestBody,
+  csrfProtection,
+} from "./middleware/security.js";
 import { logAuthEvent } from "./utils/authLogger.js";
+import {
+  getPublicApiRatelimit,
+  getAuthenticatedApiRatelimit,
+  getAdminApiRatelimit,
+} from "./config/redis.js";
 
 dotenv.config();
 
@@ -57,16 +66,17 @@ app.use(
   }),
 );
 app.use(securityHeaders);
-app.use(
-  rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 600,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { message: "Too many requests. Please try again later." },
-    skip: (req) => req.method === "OPTIONS",
-  }),
-);
+// API rate limiter - only applies to /api/* endpoints
+const apiRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: Number(process.env.API_RATE_LIMIT_MAX) || 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many API requests. Please try again later." },
+  skip: (req) => !req.path.startsWith("/api/") || req.method === "OPTIONS",
+});
+
+app.use(apiRateLimiter);
 app.use(express.json({ limit: "1mb" }));
 app.use(validateRequestBody);
 app.use(logAuthEvent);
@@ -76,7 +86,8 @@ app.get("/", (req, res) => {
   res.json({ message: "Golden Agrochemicals API is running." });
 });
 
-app.use("/api/auth", authRoutes);
+// Apply tiered rate limiting to different route categories
+// Auth endpoints use their own strict rate limiting in authRoutes.js
 app.use("/api/customers", customerRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/sales", saleRoutes);

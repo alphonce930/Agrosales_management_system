@@ -4,6 +4,8 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { durationToSeconds } from "../utils/duration.js";
 import { getClientIp } from "../utils/clientIp.js";
 
+let registerIpRatelimit = null;
+
 const genericMessage = {
   message: "Too many login attempts. Please try again later.",
 };
@@ -89,13 +91,11 @@ export const loginIpLimit = async (req, res, next) => {
   }
 };
 
-export const registerIpLimit = async (req, res, next) => {
-  try {
-    const client = getRedis();
-    if (!client) return next();
-
-    // Use a separate, more lenient rate limit for registration
-    const limiter = new Ratelimit({
+export const getRegisterIpRatelimit = () => {
+  const client = getRedis();
+  if (!client) return null;
+  if (!registerIpRatelimit) {
+    registerIpRatelimit = new Ratelimit({
       redis: client,
       limiter: Ratelimit.fixedWindow(
         Number(process.env.REGISTER_RATE_LIMIT) || 10,
@@ -103,6 +103,14 @@ export const registerIpLimit = async (req, res, next) => {
       ),
       prefix: "auth:register:ip",
     });
+  }
+  return registerIpRatelimit;
+};
+
+export const registerIpLimit = async (req, res, next) => {
+  try {
+    const limiter = getRegisterIpRatelimit();
+    if (!limiter) return next();
 
     const result = await limiter.limit(getClientIp(req));
     if (!result.allowed) {
@@ -193,12 +201,10 @@ export const clearFailedLoginLimit = async (identity, deviceId) => {
   const redis = getRedis();
   if (!redis) return;
   try {
-    const keys = [
-      getIdentityAttemptKey(normalizeIdentity(identity)),
-      getPreAuthKey(identity, "*"),
-    ];
-    if (deviceId)
+    const keys = [getIdentityAttemptKey(normalizeIdentity(identity))];
+    if (deviceId) {
       keys.push(getDeviceAttemptKey(deviceId), getDeviceLockKey(deviceId));
+    }
     await Promise.all(keys.map((key) => redis.del(key)));
   } catch (error) {
     console.error("Unable to clear failed login counter", error);

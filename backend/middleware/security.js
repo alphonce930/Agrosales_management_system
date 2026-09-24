@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+
 const stateChangingMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 const removeUnsafeKeys = (value) => {
@@ -10,6 +12,38 @@ const removeUnsafeKeys = (value) => {
   }
 };
 
+// Generate CSRF token for state-changing operations that use cookies
+const generateCsrfToken = () => crypto.randomBytes(32).toString("hex");
+
+const verifyCsrfToken = (req) => {
+  // CSRF protection is only needed for cookie-based authentication
+  // Since most API calls use Authorization header with JWT, CSRF risk is minimal
+  // The refresh endpoint uses cookies, so we protect it specifically
+  const token = req.headers["x-csrf-token"];
+  const cookieToken = req.cookies?.csrf_token;
+  return token && cookieToken && token === cookieToken;
+};
+
+export const csrfProtection = (req, res, next) => {
+  // Skip CSRF for GET, HEAD, OPTIONS
+  if (["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+    return next();
+  }
+
+  // Skip CSRF if Authorization header is present (JWT-based auth)
+  if (req.headers.authorization) {
+    return next();
+  }
+
+  // Apply CSRF for cookie-based state-changing requests
+  if (stateChangingMethods.has(req.method)) {
+    if (!verifyCsrfToken(req)) {
+      return res.status(403).json({ message: "CSRF token validation failed." });
+    }
+  }
+  next();
+};
+
 export const securityHeaders = (req, res, next) => {
   res.set({
     "X-Content-Type-Options": "nosniff",
@@ -20,6 +54,8 @@ export const securityHeaders = (req, res, next) => {
     "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
     "Cross-Origin-Resource-Policy": "cross-origin",
   });
+  // CSP: Removed unsafe-inline from style-src. If inline styles are needed,
+  // they should be moved to CSS files or use nonce-based CSP.
   res.set(
     "Content-Security-Policy",
     [
@@ -28,7 +64,7 @@ export const securityHeaders = (req, res, next) => {
       "frame-src https://accounts.google.com",
       "connect-src 'self' https://accounts.google.com https://oauth2.googleapis.com",
       "img-src 'self' data: https://lh3.googleusercontent.com",
-      "style-src 'self' 'unsafe-inline'",
+      "style-src 'self'",
       "base-uri 'self'",
       "form-action 'self'",
       "object-src 'none'",

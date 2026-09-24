@@ -50,13 +50,15 @@ const saveSession = async (
   };
 
   await runRedis("session write", async () => {
-    await redis.set(sessionKey(sessionId), session, {
-      ex: getRefreshTtlSeconds(),
-    });
-    await redis.sadd(userDevicesKey(user.id), deviceId);
-    await redis.expire(userDevicesKey(user.id), getRefreshTtlSeconds());
-    await redis.sadd(deviceSessionsKey(deviceId), sessionId);
-    await redis.expire(deviceSessionsKey(deviceId), getRefreshTtlSeconds());
+    const ttl = getRefreshTtlSeconds();
+    // Use pipeline to reduce Redis round trips
+    await redis.pipeline([
+      ["set", sessionKey(sessionId), session, { ex: ttl }],
+      ["sadd", userDevicesKey(user.id), deviceId],
+      ["expire", userDevicesKey(user.id), ttl],
+      ["sadd", deviceSessionsKey(deviceId), sessionId],
+      ["expire", deviceSessionsKey(deviceId), ttl],
+    ]);
   });
 
   return session;

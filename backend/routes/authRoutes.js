@@ -18,6 +18,7 @@ import {
   resolveDeviceId,
   getDeviceCookieName,
 } from "../middleware/loginRateLimit.js";
+import { csrfProtection } from "../middleware/security.js";
 import {
   createSessionTokens,
   rotateSessionTokens,
@@ -238,8 +239,15 @@ router.post("/register", registerAttemptLimiter, async (req, res) => {
 });
 
 router.post("/login", loginAttemptLimiter, async (req, res) => {
+  const timings = {};
+  const start = Date.now();
+  timings.loginStart = start;
+
   try {
+    timings.rateLimitStart = Date.now();
     const deviceId = resolveDeviceId(req, res, { createIfMissing: true });
+    timings.rateLimitEnd = Date.now();
+
     const { email, password } = req.body;
     if (
       typeof email !== "string" ||
@@ -253,10 +261,12 @@ router.post("/login", loginAttemptLimiter, async (req, res) => {
     }
 
     const identity = email.trim().toLowerCase();
+    timings.dbQueryStart = Date.now();
     const users = await query(
-      "SELECT * FROM users WHERE email = ? OR username = ?",
+      "SELECT id, full_name, username, email, phone, location, profile_picture, auth_provider, role, status, password, created_at FROM users WHERE email = ? OR username = ?",
       [identity, identity],
     );
+    timings.dbQueryEnd = Date.now();
     if (!users.length) {
       if (!(await registerFailedLogin(req, res, deviceId))) return;
       return res.status(401).json({ message: "Invalid credentials." });
@@ -270,16 +280,35 @@ router.post("/login", loginAttemptLimiter, async (req, res) => {
       });
     }
 
+    timings.passwordVerifyStart = Date.now();
     const match = await comparePassword(password, user.password);
+    timings.passwordVerifyEnd = Date.now();
     if (!match) {
       if (!(await registerFailedLogin(req, res, deviceId))) return;
       return res.status(401).json({ message: "Invalid credentials." });
     }
 
     await clearFailedLoginLimit(identity, deviceId);
+    timings.sessionCreateStart = Date.now();
     const tokens = await issueTokens(req, user, deviceId);
+    timings.sessionCreateEnd = Date.now();
     setDeviceCookie(res, deviceId);
-    return sendAuthenticated(res, tokens, user);
+    timings.responseStart = Date.now();
+    const response = sendAuthenticated(res, tokens, user);
+    timings.responseEnd = Date.now();
+
+    // Log performance metrics (development/staging only)
+    if (process.env.NODE_ENV !== "production") {
+      console.info("Login performance metrics:", {
+        rateLimit: timings.rateLimitEnd - timings.rateLimitStart,
+        dbQuery: timings.dbQueryEnd - timings.dbQueryStart,
+        passwordVerify: timings.passwordVerifyEnd - timings.passwordVerifyStart,
+        sessionCreate: timings.sessionCreateEnd - timings.sessionCreateStart,
+        response: timings.responseEnd - timings.responseStart,
+        total: Date.now() - start,
+      });
+    }
+    return response;
   } catch (error) {
     if (error.status === 503) {
       return res.status(503).json({
@@ -319,13 +348,17 @@ router.post("/google", async (req, res) => {
 
     const googleId = payload.sub;
     const email = payload.email.trim().toLowerCase();
-    let users = await query("SELECT * FROM users WHERE google_id = ?", [
-      googleId,
-    ]);
+    let users = await query(
+      "SELECT id, full_name, username, email, phone, location, profile_picture, auth_provider, role, status, password, created_at FROM users WHERE google_id = ?",
+      [googleId],
+    );
     let user = users[0];
 
     if (!user) {
-      users = await query("SELECT * FROM users WHERE email = ?", [email]);
+      users = await query(
+        "SELECT id, full_name, username, email, phone, location, profile_picture, auth_provider, role, status, password, created_at FROM users WHERE email = ?",
+        [email],
+      );
       user = users[0];
     }
 
@@ -419,7 +452,7 @@ router.post("/google", async (req, res) => {
 // A refresh request already requires a one-time, HttpOnly session credential.
 // Do not count normal token refreshes against the login-attempt budget shared
 // by users behind the same NAT/proxy.
-router.post("/refresh", async (req, res) => {
+router.post("/refresh", csrfProtection, async (req, res) => {
   try {
     const refreshToken = readCookie(req, refreshCookieName());
     if (!refreshToken)
