@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import api from "../services/api";
+import { PageSkeleton } from "../components/Skeleton";
 import {
   companyInfo,
   formatPaymentMethod,
@@ -170,7 +171,7 @@ export default function StaffReceiptsPage() {
   };
 
   if (loading) {
-    return <div className="card p-6 text-slate-600">Loading receipts...</div>;
+    return <PageSkeleton />;
   }
 
   return (

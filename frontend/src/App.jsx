@@ -8,6 +8,7 @@ import RegisterPage from "./pages/RegisterPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import HomePage from "./pages/HomePage";
+import { PageSkeleton } from "./components/Skeleton";
 
 // Lazy load dashboard pages for better performance
 const StaffDashboard = lazy(() => import("./pages/StaffDashboard"));
@@ -30,7 +31,7 @@ const ProfilePage = lazy(() => import("./pages/ProfilePage"));
 const ProtectedRoute = ({ children, allowedRoles = [] }) => {
   const { user, loading } = useAuth();
 
-  if (loading) return <div className="p-8 text-center">Loading...</div>;
+  if (loading) return <PageSkeleton />;
   if (!user) return <Navigate to="/login" replace />;
   if (allowedRoles.length && !allowedRoles.includes(user.role))
     return <Navigate to="/" replace />;
@@ -38,12 +39,7 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
   return children;
 };
 
-const LoadingFallback = () => (
-  <div className="p-8 text-center">
-    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-    <p className="mt-2 text-gray-600">Loading...</p>
-  </div>
-);
+const LoadingFallback = () => <PageSkeleton />;
 
 export default function App() {
   const { user } = useAuth();

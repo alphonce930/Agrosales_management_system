@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PackagePlus, RefreshCw, Search, Trash2 } from 'lucide-react';
 import api from '../services/api';
+import { TableSkeletonRows } from '../components/Skeleton';
 
 export default function StaffProductsPage() {
   const [products, setProducts] = useState([]);
@@ -147,9 +148,7 @@ export default function StaffProductsPage() {
             </thead>
             <tbody>
               {loading ? (
-                <tr>
-                  <td colSpan="7" className="px-5 py-8 text-center text-slate-500">Loading products...</td>
-                </tr>
+                <TableSkeletonRows columns={7} />
               ) : filteredProducts.length ? filteredProducts.map((product) => (
                 <tr key={product.id} className="border-t border-slate-200">
                   <td className="px-5 py-4 font-medium text-slate-900">{product.product_code}</td>

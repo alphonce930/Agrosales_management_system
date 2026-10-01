@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Search, ShieldAlert, UserCog } from 'lucide-react';
 import api from '../services/api';
+import { TableSkeletonRows } from '../components/Skeleton';
 
 const roles = ['super_admin', 'admin', 'staff'];
 
@@ -61,7 +62,7 @@ export default function SuperAdminUsersPage() {
               <tr><th className="px-5 py-3 font-medium">User</th><th className="px-5 py-3 font-medium">Role</th><th className="px-5 py-3 font-medium">Status</th><th className="px-5 py-3 font-medium">Actions</th></tr>
             </thead>
             <tbody>
-              {loading ? <tr><td colSpan="4" className="px-5 py-8 text-center text-slate-500">Loading user accounts...</td></tr> : filteredUsers.length ? filteredUsers.map((user) => (
+              {loading ? <TableSkeletonRows columns={4} /> : filteredUsers.length ? filteredUsers.map((user) => (
                 <tr key={user.id} className="border-t border-slate-200">
                   <td className="px-5 py-4"><div className="font-semibold text-slate-900">{user.full_name}</div><div className="text-slate-500">{user.email}</div></td>
                   <td className="px-5 py-4"><select value={user.role} onChange={(event) => updateUser(user.id, event.target.value, user.status)} className="rounded-lg border border-slate-200 px-2 py-1.5 uppercase"><option value={roles[0]}>Super admin</option><option value={roles[1]}>Admin</option><option value={roles[2]}>Staff</option></select></td>
