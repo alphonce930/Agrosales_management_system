@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS users (
   auth_provider TEXT NOT NULL DEFAULT 'local' CHECK (auth_provider IN ('local','google')),
   role TEXT NOT NULL DEFAULT 'staff' CHECK (role IN ('super_admin','admin','staff')),
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','verified','suspended')),
+  password_reset_token TEXT NULL,
+  password_reset_expires TIMESTAMP WITHOUT TIME ZONE NULL,
   created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT users_unique_google_id UNIQUE (google_id)

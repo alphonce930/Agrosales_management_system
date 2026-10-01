@@ -14,8 +14,21 @@
 
 ### Frontend Configuration
 
-- `FRONTEND_URL` - Comma-separated list of allowed frontend origins (optional, defaults are configured in app.js)
-  - Example: `https://agrosales-management-system-p3xt.vercel.app,https://agrosales-management-system.vercel.app`
+- `FRONTEND_URL` - Frontend URL for password reset links (default: "http://localhost:5173")
+  - Example: `https://agrosales-management-system-p3xt.vercel.app`
+
+### Email Service Configuration (Required for Password Reset)
+
+- `EMAIL_SERVICE` - Email provider to use (options: `console`, `resend`, `sendgrid`, `nodemailer`)
+  - Default: `console` (logs to console for development)
+- `RESEND_API_KEY` - Resend API key (if using Resend)
+- `RESEND_FROM_EMAIL` - From email address for Resend (default: "noreply@agrochemicals.com")
+- `SENDGRID_API_KEY` - SendGrid API key (if using SendGrid)
+- `SENDGRID_FROM_EMAIL` - From email address for SendGrid (default: "noreply@agrochemicals.com")
+- `SMTP_HOST` - SMTP host (if using Nodemailer)
+- `SMTP_PORT` - SMTP port (if using Nodemailer)
+- `SMTP_USER` - SMTP username (if using Nodemailer)
+- `SMTP_PASS` - SMTP password (if using Nodemailer)
 
 ### Google OAuth (Optional)
 

@@ -25,6 +25,11 @@ import {
   revokeSession,
   revokeUserSessions,
 } from "../services/authSessions.js";
+import {
+  sendPasswordResetEmail,
+  generateResetToken,
+  hashResetToken,
+} from "../services/emailService.js";
 
 dotenv.config();
 
@@ -492,6 +497,107 @@ router.post("/logout-all", protect, async (req, res) => {
 
 router.get("/me", protect, async (req, res) => {
   return res.json({ user: req.user });
+});
+
+// POST /api/auth/forgot-password
+router.post("/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email || typeof email !== "string" || !email.trim()) {
+      return res.status(400).json({ message: "Email is required." });
+    }
+
+    const identity = email.trim().toLowerCase();
+
+    // Always return success to prevent account enumeration
+    // Only send email if account exists
+    const users = await query("SELECT id, email FROM users WHERE email = ?", [
+      identity,
+    ]);
+
+    if (users.length > 0) {
+      const user = users[0];
+      const resetToken = generateResetToken();
+      const hashedToken = hashResetToken(resetToken);
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+      await query(
+        "UPDATE users SET password_reset_token = ?, password_reset_expires = ? WHERE id = ?",
+        [hashedToken, expiresAt, user.id],
+      );
+
+      // Send email (async, don't wait for completion)
+      sendPasswordResetEmail(user.email, resetToken).catch((error) => {
+        console.error("Failed to send password reset email:", error);
+      });
+    }
+
+    return res.json({
+      message:
+        "If an account with this email exists, a password reset link has been sent.",
+    });
+  } catch (error) {
+    console.error("Forgot password error:", error);
+    return res
+      .status(500)
+      .json({ message: "Failed to process request. Please try again." });
+  }
+});
+
+// POST /api/auth/reset-password
+router.post("/reset-password", async (req, res) => {
+  try {
+    const { token, password } = req.body;
+
+    if (!token || typeof token !== "string" || !token.trim()) {
+      return res.status(400).json({ message: "Reset token is required." });
+    }
+
+    if (!password || typeof password !== "string" || password.length < 8) {
+      return res
+        .status(400)
+        .json({ message: "Password must be at least 8 characters." });
+    }
+
+    const hashedToken = hashResetToken(token.trim());
+    const now = new Date();
+
+    // Find user with valid reset token
+    const users = await query(
+      "SELECT id FROM users WHERE password_reset_token = ? AND password_reset_expires > ?",
+      [hashedToken, now],
+    );
+
+    if (!users.length) {
+      return res.status(400).json({
+        message:
+          "Invalid or expired reset token. Please request a new password reset.",
+      });
+    }
+
+    const user = users[0];
+    const hashedPassword = await hashPassword(password);
+
+    // Update password and clear reset token
+    await query(
+      "UPDATE users SET password = ?, password_reset_token = NULL, password_reset_expires = NULL WHERE id = ?",
+      [hashedPassword, user.id],
+    );
+
+    // Revoke all existing sessions for security
+    await revokeUserSessions(user.id);
+
+    return res.json({
+      message:
+        "Password reset successfully. Please log in with your new password.",
+    });
+  } catch (error) {
+    console.error("Reset password error:", error);
+    return res
+      .status(500)
+      .json({ message: "Failed to reset password. Please try again." });
+  }
 });
 
 router.put("/profile-picture", protect, async (req, res) => {
