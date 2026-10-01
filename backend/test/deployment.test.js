@@ -9,15 +9,22 @@ process.env.JWT_REFRESH_SECRET = "test-refresh-secret-that-is-long-enough";
 const savedEnv = {
   NODE_ENV: process.env.NODE_ENV,
   PORT: process.env.PORT,
+  FLY_APP_NAME: process.env.FLY_APP_NAME,
 };
 process.env.NODE_ENV = "production";
 process.env.PORT = "0";
+process.env.FLY_APP_NAME = "test-fly-app";
 
 const app = (await import("../app.js")).default;
 
 test.after(() => {
   process.env.NODE_ENV = savedEnv.NODE_ENV;
   process.env.PORT = savedEnv.PORT;
+  process.env.FLY_APP_NAME = savedEnv.FLY_APP_NAME;
+});
+
+test("Fly trusts only its direct proxy hop for client IPs", () => {
+  assert.equal(app.get("trust proxy"), 1);
 });
 
 const listen = () =>

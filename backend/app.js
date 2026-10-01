@@ -28,11 +28,13 @@ import { getQueryMetrics } from "./utils/queryMetrics.js";
 dotenv.config();
 
 const app = express();
-// Vercel supplies the client address through one trusted proxy hop. Never read
-// x-forwarded-for directly in routes.
+// Vercel and Fly.io supply the client address through one trusted proxy hop.
+// Never read x-forwarded-for directly in routes.
 app.set(
   "trust proxy",
-  process.env.VERCEL ? 1 : process.env.TRUST_PROXY === "true",
+  process.env.VERCEL || process.env.FLY_APP_NAME
+    ? 1
+    : process.env.TRUST_PROXY === "true",
 );
 
 const projectRoot = path.resolve(
