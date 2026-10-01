@@ -282,6 +282,7 @@ Apply `backend/database/schema.sql` to a blank Neon database before the first de
 - Do not set `SEED_DEFAULT_USERS=true` in production.
 - Keep `FRONTEND_URL` restricted to the exact frontend origin used by the app.
 - Device login limits are intentionally per-device and per-session in Redis. Do not replace them with a single user-wide counter.
+- Login and registration use their dedicated IP and authentication-attempt limits rather than the general API request quota. If a first login still receives 429, inspect the response body and `Retry-After`: Redis-backed shared-IP or device-lock limits may be responsible.
 - The secure device cookie is HttpOnly and should not be modified by frontend code; the backend creates and validates the device ID and stores it with the session metadata.
 - Use a separate pre-auth rate limit for unknown/new devices so a user cannot bypass device lockouts by deleting the cookie and creating a fresh device identifier.
 - Vercel preview URLs are different origins. To test one with this credentialed

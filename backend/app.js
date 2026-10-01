@@ -98,7 +98,11 @@ const apiRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: "Too many API requests. Please try again later." },
-  skip: (req) => !req.path.startsWith("/api/") || req.method === "OPTIONS",
+  skip: (req) =>
+    !req.path.startsWith("/api/") ||
+    req.method === "OPTIONS" ||
+    req.path === "/api/auth/login" ||
+    req.path === "/api/auth/register",
 });
 
 app.use(apiRateLimiter);

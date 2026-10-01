@@ -17,7 +17,7 @@ process.env.NODE_ENV = "production";
 process.env.PORT = "0";
 process.env.VERCEL = "1";
 delete process.env.FLY_APP_NAME;
-delete process.env.API_RATE_LIMIT_MAX;
+process.env.API_RATE_LIMIT_MAX = "1";
 
 const app = (await import("../app.js")).default;
 
@@ -48,6 +48,7 @@ const request = (
       // Simulate Fly's proxy terminating TLS in front of the app.
       Host: "cpt1.fly.dev",
       "X-Forwarded-Proto": "https",
+      "X-Forwarded-For": `198.51.100.${requestIpSequence++}`,
       ...extraHeaders,
     };
     if (origin) headers.Origin = origin;
@@ -65,6 +66,8 @@ const request = (
     req.end();
   });
 
+let requestIpSequence = 1;
+
 test("the liveness route answers 200 behind a TLS-terminating proxy", async () => {
   const server = await listen();
   try {
@@ -76,11 +79,30 @@ test("the liveness route answers 200 behind a TLS-terminating proxy", async () =
   }
 });
 
-test("Vercel allows normal API traffic without the local 300-request cap", async () => {
+test("the general API rate limit respects its configured value", async () => {
   const server = await listen();
   try {
     const { headers } = await request(server, "/api/does-not-exist");
-    assert.equal(headers["ratelimit-limit"], "3000");
+    assert.equal(headers["ratelimit-limit"], "1");
+  } finally {
+    server.close();
+  }
+});
+
+test("login is not blocked by an exhausted general API quota", async () => {
+  const server = await listen();
+  const ip = "198.51.100.200";
+  try {
+    const first = await request(server, "/api/does-not-exist", {
+      extraHeaders: { "X-Forwarded-For": ip },
+    });
+    assert.equal(first.status, 404);
+
+    const login = await request(server, "/api/auth/login", {
+      method: "POST",
+      extraHeaders: { "X-Forwarded-For": ip },
+    });
+    assert.equal(login.status, 415);
   } finally {
     server.close();
   }
