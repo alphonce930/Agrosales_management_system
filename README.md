@@ -240,6 +240,8 @@ SUPER_ADMIN_EMAIL=superadmin@goldenagro.com
 SUPER_ADMIN_PASSWORD=<strong super-admin password>
 # Comma-separate exact origins when production and a Vercel preview use the API.
 FRONTEND_URL=https://agrosales-management-system.vercel.app,https://agrosales-management-system-p3xt-ju33349kb.vercel.app
+# Optional: override the Vercel preview project prefix (Vercel defaults to this frontend project).
+VERCEL_PREVIEW_PREFIX=agrosales-management-system-p3xt
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 ALLOW_MEMORY_DB=false

@@ -79,7 +79,8 @@ test("an explicitly allowlisted origin is accepted", () => {
 });
 
 test("Vercel preview hosts are refused unless the preview opt-in is enabled", () => {
-  const preview = "https://agrosales-management-system-abc123.vercel.app";
+  const preview =
+    "https://agrosales-management-system-p3xt-abc123.vercel.app";
   assert.equal(isOriginAllowed(preview), false);
 
   process.env.CORS_ALLOW_VERCEL_PREVIEWS = "true";
@@ -93,6 +94,33 @@ test("Vercel preview hosts are refused unless the preview opt-in is enabled", ()
     );
   } finally {
     delete process.env.CORS_ALLOW_VERCEL_PREVIEWS;
+    resetAllowedOriginsCache();
+  }
+});
+
+test("Vercel deployments allow only previews for the configured frontend project", () => {
+  const savedVercel = process.env.VERCEL;
+  const savedPrefix = process.env.VERCEL_PREVIEW_PREFIX;
+  process.env.VERCEL = "1";
+  delete process.env.VERCEL_PREVIEW_PREFIX;
+  resetAllowedOriginsCache();
+
+  try {
+    assert.equal(
+      isOriginAllowed(
+        "https://agrosales-management-system-p3xt-dtpwy9mm3.vercel.app",
+      ),
+      true,
+    );
+    assert.equal(
+      isOriginAllowed("https://unrelated-project-dtpwy9mm3.vercel.app"),
+      false,
+    );
+  } finally {
+    if (savedVercel === undefined) delete process.env.VERCEL;
+    else process.env.VERCEL = savedVercel;
+    if (savedPrefix === undefined) delete process.env.VERCEL_PREVIEW_PREFIX;
+    else process.env.VERCEL_PREVIEW_PREFIX = savedPrefix;
     resetAllowedOriginsCache();
   }
 });

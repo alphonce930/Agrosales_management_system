@@ -38,12 +38,17 @@ const listen = () =>
     const server = app.listen(0, () => resolve(server));
   });
 
-const request = (server, path, { origin, method = "GET" } = {}) =>
+const request = (
+  server,
+  path,
+  { origin, method = "GET", extraHeaders = {} } = {},
+) =>
   new Promise((resolve, reject) => {
     const headers = {
       // Simulate Fly's proxy terminating TLS in front of the app.
       Host: "cpt1.fly.dev",
       "X-Forwarded-Proto": "https",
+      ...extraHeaders,
     };
     if (origin) headers.Origin = origin;
     const req = http.request(
@@ -76,6 +81,27 @@ test("Vercel allows normal API traffic without the local 300-request cap", async
   try {
     const { headers } = await request(server, "/api/does-not-exist");
     assert.equal(headers["ratelimit-limit"], "3000");
+  } finally {
+    server.close();
+  }
+});
+
+test("Vercel allows the frontend project's credentialed login preflight", async () => {
+  const server = await listen();
+  const origin =
+    "https://agrosales-management-system-p3xt-dtpwy9mm3.vercel.app";
+  try {
+    const { status, headers } = await request(server, "/api/auth/login", {
+      method: "OPTIONS",
+      origin,
+      extraHeaders: {
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "authorization,content-type",
+      },
+    });
+    assert.equal(status, 204);
+    assert.equal(headers["access-control-allow-origin"], origin);
+    assert.equal(headers["access-control-allow-credentials"], "true");
   } finally {
     server.close();
   }

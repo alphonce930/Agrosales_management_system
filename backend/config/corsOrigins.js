@@ -6,9 +6,8 @@
  * - Origins are compared after normalisation (lower-cased host, no trailing
  *   slash) so trailing slashes or mixed case in configuration cannot silently
  *   produce a 403 for a legitimate frontend.
- * - Vercel preview deployments get an explicit *hostname pattern* opt-in
- *   rather than a blanket wildcard: only hosts of the form
- *   `<prefix>-<hash>.vercel.app` for the configured project prefix match.
+ * - Vercel deployments allow preview hosts for this frontend project using a
+ *   specific hostname prefix, never a blanket wildcard.
  */
 const DEFAULT_PRODUCTION_ORIGINS = [
   "https://agrosales-management-system.vercel.app",
@@ -44,9 +43,15 @@ const splitList = (value) =>
 const isDevelopment = () => process.env.NODE_ENV !== "production";
 
 const buildPreviewPattern = () => {
-  if (process.env.CORS_ALLOW_VERCEL_PREVIEWS !== "true") return null;
+  if (
+    process.env.VERCEL !== "1" &&
+    process.env.CORS_ALLOW_VERCEL_PREVIEWS !== "true"
+  ) {
+    return null;
+  }
   const safePrefix = String(
-    process.env.VERCEL_PREVIEW_PREFIX || "agrosales-management-system",
+    process.env.VERCEL_PREVIEW_PREFIX ||
+      "agrosales-management-system-p3xt",
   )
     .replace(/[^a-z0-9-]/gi, "")
     .toLowerCase();
