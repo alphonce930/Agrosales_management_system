@@ -1,4 +1,4 @@
-import { isOriginAllowed } from "../config/corsOrigins.js";
+import { isOriginAllowed, resolveSelfOrigin } from "../config/corsOrigins.js";
 
 const stateChangingMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
@@ -46,7 +46,10 @@ export const csrfProtection = (req, res, next) => {
   if (!stateChangingMethods.has(req.method)) return next();
 
   const origin = requestOrigin(req);
-  if (origin && isOriginAllowed(origin)) return next();
+  // selfOrigin keeps single-origin deployments (one container serving both the
+  // SPA and the API) working, where the browser sends the app's own origin on
+  // every state-changing request.
+  if (origin && isOriginAllowed(origin, resolveSelfOrigin(req))) return next();
 
   return res.status(403).json({
     message: "Request blocked: the request origin is not allowed.",

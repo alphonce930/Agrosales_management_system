@@ -1,0 +1,49 @@
+# Fly.io configuration - single-container deployment.
+#
+# The Express API also serves the built SPA from frontend/dist (see
+# backend/app.js), so one service covers the whole system.
+#
+# Without this file Fly's proxy has no port to route to and answers every
+# request with its own "404 NOT_FOUND" edge page.
+
+app = "cpt1"
+primary_region = "jnb"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  # The app binds to process.env.PORT. This MUST equal
+  # [http_service] internal_port below.
+  PORT = "8080"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Keep one machine warm. This app is a login-gated SPA on a single origin, so
+  # cold starts on every navigation are slow and surface as confusing first-load
+  # failures.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 200
+    hard_limit = 250
+
+  # Liveness only - deliberately "/" and NOT "/api/health".
+  # /api/health returns 503 while PostgreSQL is unreachable; using it as a check
+  # would restart the machine and bury the real error behind an edge 404.
+  # Query /api/health manually to see database and Redis status.
+  [[http_service.checks]]
+    grace_period = "15s"
+    interval = "30s"
+    method = "GET"
+    timeout = "5s"
+    path = "/"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

@@ -48,6 +48,15 @@ const redis = {
   async smembers(key) {
     return [...(store.get(key) ?? new Set())];
   },
+  // authSessions.saveSession batches its writes with Upstash's pipeline().
+  // The real @upstash/redis client provides this, so the double must too;
+  // otherwise every session test dies inside runRedis() and surfaces as a
+  // misleading "Authentication is temporarily unavailable" 503.
+  async pipeline(commands) {
+    return Promise.all(
+      commands.map(([command, ...args]) => redis[command](...args)),
+    );
+  },
 };
 
 const { setRedisClient } = await import("../config/redis.js");

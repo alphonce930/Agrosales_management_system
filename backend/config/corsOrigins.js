@@ -83,13 +83,45 @@ export const resetAllowedOriginsCache = () => {
 };
 
 /**
+ * Reconstructs the origin the browser used to reach this server from the Host
+ * header plus the TLS-terminating proxy's X-Forwarded-Proto (Fly sets both).
+ *
+ * Why this is needed: a single-container deployment serves the SPA and the API
+ * from one hostname, so a same-origin call such as `POST /api/auth/login`
+ * still carries `Origin: https://<app>.fly.dev`. Treating that as cross-site
+ * would 403 every write made from the app's own pages, and it would also force
+ * operators to duplicate their own deployment hostname in FRONTEND_URL - a
+ * silent-breakage trap, because a mismatch there produces a login page that
+ * simply never authenticates.
+ *
+ * Safe by construction: the browser always sets Host to the host it is actually
+ * contacting, so this can only match when Origin equals that same host. A
+ * hostile page cannot satisfy it, because it addresses the victim host while
+ * sending its own Origin, which differs.
+ */
+export const resolveSelfOrigin = (req) => {
+  const host = String(req.get?.("host") || "").trim();
+  if (!host) return "";
+  const forwardedProto = String(req.get?.("x-forwarded-proto") || "")
+    .split(",")[0]
+    .trim();
+  const protocol = forwardedProto || (req.secure ? "https" : "http");
+  if (protocol !== "http" && protocol !== "https") return "";
+  return normalizeOrigin(`${protocol}://${host}`);
+};
+
+/**
  * A request with no Origin header (same-origin navigation, curl, server to
  * server) is not a cross-origin request and must not be blocked.
+ *
+ * `selfOrigin` (see resolveSelfOrigin) is the one implicit entry that is always
+ * safe to honour; everything else must be explicitly allowlisted.
  */
-export const isOriginAllowed = (origin) => {
+export const isOriginAllowed = (origin, selfOrigin = "") => {
   if (!origin) return true;
   const normalized = normalizeOrigin(origin);
   if (!normalized || normalized === "null") return false;
+  if (selfOrigin && normalized === selfOrigin) return true;
   if (getAllowedOrigins().has(normalized)) return true;
   const pattern = getPreviewPattern();
   return Boolean(pattern && pattern.test(normalized));

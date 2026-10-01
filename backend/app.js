@@ -19,7 +19,7 @@ import analyticsRoutes from "./routes/analyticsRoutes.js";
 import { securityHeaders, validateRequestBody } from "./middleware/security.js";
 import { apiNotFoundHandler, errorHandler } from "./middleware/errorHandler.js";
 import { logAuthEvent } from "./utils/authLogger.js";
-import { isOriginAllowed } from "./config/corsOrigins.js";
+import { isOriginAllowed, resolveSelfOrigin } from "./config/corsOrigins.js";
 import { AppError } from "./utils/httpErrors.js";
 import { pingDatabase } from "./config/db.js";
 import { getRedis, isRedisConfigured } from "./config/redis.js";
@@ -49,31 +49,39 @@ app.disable("x-powered-by");
 // Credentialed CORS cannot use a wildcard. The allowlist lives in
 // config/corsOrigins.js so that local development, production, and Vercel
 // preview origins are handled by one auditable rule set.
+//
+// cors() is handed a delegate rather than a plain options object because the
+// origin callback only receives the origin string; the delegate receives the
+// request, which is what lets same-origin deployments (one container serving
+// both the SPA and the API) be recognised via resolveSelfOrigin(req).
 app.use(
-  cors({
-    origin(origin, callback) {
-      if (isOriginAllowed(origin)) return callback(null, true);
-      return callback(
-        new AppError(
-          `Origin ${origin} is not allowed by CORS.`,
-          403,
-          "CORS_ORIGIN_DENIED",
-        ),
-      );
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    // Idempotency-Key is sent by the sale and payment forms. Omitting it here
-    // makes the browser fail the preflight, which surfaced as a spurious 403.
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "Idempotency-Key",
-      "X-Request-Id",
-    ],
-    exposedHeaders: ["X-Request-Id", "Retry-After"],
-    maxAge: 86400, // 24 hours preflight cache
-    optionsSuccessStatus: 204,
+  cors((req, optionsCallback) => {
+    const selfOrigin = resolveSelfOrigin(req);
+    optionsCallback(null, {
+      origin(origin, callback) {
+        if (isOriginAllowed(origin, selfOrigin)) return callback(null, true);
+        return callback(
+          new AppError(
+            `Origin ${origin} is not allowed by CORS.`,
+            403,
+            "CORS_ORIGIN_DENIED",
+          ),
+        );
+      },
+      credentials: true,
+      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      // Idempotency-Key is sent by the sale and payment forms. Omitting it here
+      // makes the browser fail the preflight, which surfaced as a spurious 403.
+      allowedHeaders: [
+        "Content-Type",
+        "Authorization",
+        "Idempotency-Key",
+        "X-Request-Id",
+      ],
+      exposedHeaders: ["X-Request-Id", "Retry-After"],
+      maxAge: 86400, // 24 hours preflight cache
+      optionsSuccessStatus: 204,
+    });
   }),
 );
 

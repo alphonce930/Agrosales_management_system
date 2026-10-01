@@ -44,19 +44,57 @@ const buildConnectionConfig = () => {
   };
 };
 
-const pool = new Pool(buildConnectionConfig());
+const isDatabaseConfigured = () => {
+  if (process.env.DATABASE_URL || process.env.DB_URL) return true;
+  return Boolean(process.env.DB_HOST && process.env.DB_NAME && process.env.DB_USER);
+};
 
-// An idle client erroring (network blip, database restart) must never take the
-// process down with an unhandled 'error' event.
-pool.on("error", (error) => {
-  console.error(
-    JSON.stringify({
-      level: "error",
-      event: "pg_pool_error",
-      message: error?.message || String(error),
-    }),
-  );
-});
+/**
+ * The pool is created lazily and never at import time.
+ *
+ * buildConnectionConfig() throws when no connection settings are present, and a
+ * throw at module scope would kill the process before app.listen() ever runs.
+ * A managed host then reports that to the user as an unexplained 404 from its
+ * own edge router, which gives no hint that the actual cause is a missing
+ * DATABASE_URL. Deferring construction lets the server boot and report
+ * {"status":"degraded","database":"down"} from /api/health instead, which is
+ * exactly the degraded mode server.js already documents.
+ */
+let poolInstance = null;
+
+const getPool = () => {
+  if (poolInstance || !isDatabaseConfigured()) return poolInstance;
+
+  poolInstance = new Pool(buildConnectionConfig());
+
+  // An idle client erroring (network blip, database restart) must never take
+  // the process down with an unhandled 'error' event.
+  poolInstance.on("error", (error) => {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        event: "pg_pool_error",
+        message: error?.message || String(error),
+      }),
+    );
+  });
+
+  return poolInstance;
+};
+
+/**
+ * Returns the pool, or throws an error shaped like a connection failure so the
+ * existing isConnectionError() branch in query(), getConnection() and
+ * initializeDatabase() reports an unconfigured database as a retryable 503
+ * rather than an unhandled crash.
+ */
+const requirePool = () => {
+  const instance = getPool();
+  if (instance) return instance;
+  const error = new Error("DATABASE_URL is not configured.");
+  error.code = "ECONNREFUSED";
+  throw error;
+};
 
 /**
  * Runs a statement through an executor while recording its duration, so every
@@ -430,7 +468,7 @@ export const query = async (sql, params = []) => {
 
   try {
     const preparedSql = normalizePostgresSql(sql);
-    const result = await runTimedQuery(pool, preparedSql, params, sql);
+    const result = await runTimedQuery(requirePool(), preparedSql, params, sql);
     const mutation = /^(INSERT|UPDATE|DELETE|CREATE|ALTER|DROP)\b/i.test(
       sql.trim(),
     );
@@ -450,7 +488,7 @@ export const getConnection = async () => {
   if (Date.now() < databaseUnavailableUntil) throw unavailableError();
 
   try {
-    const client = await pool.connect();
+    const client = await requirePool().connect();
     const connection = {
       ...client,
       async query(sql, params = []) {
@@ -504,7 +542,7 @@ export const pingDatabase = async () => {
 
 export async function initializeDatabase() {
   try {
-    await runTimedQuery(pool, "SELECT 1", [], "SELECT 1");
+    await runTimedQuery(requirePool(), "SELECT 1", [], "SELECT 1");
     return true;
   } catch (error) {
     if (!isConnectionError(error)) throw error;
@@ -523,4 +561,4 @@ export async function initializeDatabase() {
   }
 }
 
-export default pool;
+export default getPool;

@@ -120,6 +120,66 @@ The frontend receives a Google ID token from the official GIS library and sends 
 
 Google users are created as verified staff accounts. If a verified Google email matches an existing account, the Google ID is linked to that account instead of creating a duplicate.
 
+## Fly.io deployment (single container)
+
+The repository ships a `fly.toml` and a root `Dockerfile`. The Docker image
+builds the Vite SPA and copies it into the backend image, because `backend/app.js`
+also serves `frontend/dist`. **One container therefore serves the whole system**
+on a single origin, and the frontend's default relative `/api` base URL works
+unchanged.
+
+### Deploy
+
+```bash
+fly launch --no-deploy          # or just use the committed fly.toml
+fly secrets set --from-file backend/.env
+fly deploy
+fly open
+```
+
+### Required secrets
+
+Set these as Fly secrets. Missing `DATABASE_URL` or `JWT_SECRET` is the most
+common cause of a deployment that appears "up" but serves nothing.
+
+```bash
+fly secrets set \
+  DATABASE_URL="postgresql://<user>:<password>@<host>:5432/<db>?sslmode=require" \
+  JWT_SECRET="<32+ random characters>" \
+  JWT_ACCESS_SECRET="<32+ random characters>" \
+  JWT_REFRESH_SECRET="<different 32+ random characters>" \
+  ADMIN_EMAIL="admin@goldenagro.com" \
+  ADMIN_PASSWORD="<strong admin password>" \
+  SUPER_ADMIN_EMAIL="superadmin@goldenagro.com" \
+  SUPER_ADMIN_PASSWORD="<strong super-admin password>" \
+  UPSTASH_REDIS_REST_URL="<Upstash REST URL>" \
+  UPSTASH_REDIS_REST_TOKEN="<Upstash REST token>" \
+  REFRESH_COOKIE_SAME_SITE=none \
+  TRUST_PROXY=true
+```
+
+`FRONTEND_URL` is optional here. The container is same-origin, so the app trusts
+its own `Host`/`X-Forwarded-Proto` automatically. Set it only when a *separate*
+frontend origin (for example a Vercel frontend) calls this API.
+
+### Troubleshooting
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| Fly's own `404 NOT_FOUND` page (`<app>::<machine-id>-...`) | Fly's proxy has no reachable port | `internal_port` in `fly.toml` must equal `EXPOSE` in the `Dockerfile` and the port the app binds (`PORT`). All are `8080`. |
+| Same 404 page, port already correct | Container exits before `app.listen()` | Run `fly logs`; usually a missing `JWT_SECRET` or `DATABASE_URL` |
+| Page loads, API returns 503 | PostgreSQL not reachable | `fly secrets list`, then `curl https://<app>.fly.dev/api/health` |
+| Page loads, writes return 403 | `FRONTEND_URL` missing the calling origin | Add the exact origin, comma-separated |
+| Login/refresh returns 503 | Upstash Redis unreachable | Set both `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` |
+
+`GET /api/health` returns `{"status":"ok"|"degraded","database":...,"redis":...}`
+and is the fastest way to confirm which dependency is missing. The Fly liveness
+check deliberately uses `/` rather than `/api/health`, because a 503 from
+`/api/health` would restart the machine and hide the real error behind the 404.
+
+Apply `backend/database/schema.sql` to the Neon/Postgres database before the
+first deploy; see the Vercel notes above for the same variables.
+
 ## Vercel deployment
 
 Deploy the frontend and backend as separate Vercel projects.
