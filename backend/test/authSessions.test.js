@@ -60,11 +60,27 @@ const redis = {
 };
 
 const { setRedisClient } = await import("../config/redis.js");
+const { loginIpLimit } = await import("../middleware/loginRateLimit.js");
 const { createSessionTokens, rotateSessionTokens, revokeSession } =
   await import("../services/authSessions.js");
 const { registerFailedLogin, clearFailedLoginLimit, getDeviceCookieName } =
   await import("../middleware/loginRateLimit.js");
 setRedisClient(redis);
+
+test("Vercel login skips the shared-IP limiter", async () => {
+  const savedVercel = process.env.VERCEL;
+  process.env.VERCEL = "1";
+  let continued = false;
+  try {
+    await loginIpLimit({}, {}, () => {
+      continued = true;
+    });
+    assert.equal(continued, true);
+  } finally {
+    if (savedVercel === undefined) delete process.env.VERCEL;
+    else process.env.VERCEL = savedVercel;
+  }
+});
 
 const user = { id: 7, role: "staff", email: "staff@example.test" };
 const context = { ip: "127.0.0.1", userAgent: "node-test" };

@@ -15,7 +15,11 @@ const hashResetToken = (token) => {
 };
 
 const createResetLink = (token) => {
-  const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+  const frontendUrl = (
+    process.env.PASSWORD_RESET_URL ||
+    process.env.FRONTEND_URL?.split(",")[0]?.trim() ||
+    "http://localhost:5173"
+  ).replace(/\/+$/, "");
   return `${frontendUrl}/reset-password?token=${token}`;
 };
 

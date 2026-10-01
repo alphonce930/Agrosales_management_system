@@ -71,6 +71,11 @@ const getPreAuthKey = (identity, ip) =>
   `auth:login:preauth:${safeKeyPart(`${normalizeIdentity(identity)}:${String(ip || "unknown")}`)}`;
 
 export const loginIpLimit = async (req, res, next) => {
+  // Vercel's proxy can make multiple users appear to share an egress IP.
+  // Failed attempts are still limited by identity, device, and identity+IP
+  // below; avoid blocking a legitimate user's first login on a shared IP quota.
+  if (process.env.VERCEL === "1") return next();
+
   try {
     const limiter = getLoginIpRatelimit();
     if (!limiter) return next();
