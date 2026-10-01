@@ -1,7 +1,12 @@
 import axios from 'axios';
 
+const apiBaseURL = import.meta.env.VITE_API_URL ||
+  (import.meta.env.DEV
+    ? '/api'
+    : 'https://agrosales-management-system.vercel.app/api');
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
+  baseURL: apiBaseURL,
   timeout: Number(import.meta.env.VITE_API_TIMEOUT_MS) || 10000,
   withCredentials: true,
   headers: {

@@ -200,6 +200,12 @@ VITE_API_URL=https://<backend-project>.vercel.app/api
 VITE_GOOGLE_CLIENT_ID=<Google web client ID>
 ```
 
+If `VITE_API_URL` is omitted, production builds default to
+`https://agrosales-management-system.vercel.app/api`; local development keeps
+using the Vite `/api` proxy. The backend's `/` route is also sent to its
+function, so opening the backend project URL returns its liveness response
+instead of Vercel's generic `404 NOT_FOUND` page.
+
 For a Vercel preview deployment, set `VITE_API_URL` to the same backend
 project URL and add the exact preview frontend URL to the Google Cloud OAuth
 client's **Authorized JavaScript origins**. For example:
@@ -252,6 +258,8 @@ LOGIN_RATE_LIMIT=5
 LOGIN_RATE_WINDOW=5m
 IP_RATE_LIMIT=100
 IP_RATE_WINDOW=5m
+API_RATE_LIMIT_MAX=3000
+API_RATE_LIMIT_WINDOW_SECONDS=3600
 PREAUTH_LOGIN_RATE_LIMIT=20
 PREAUTH_LOGIN_WINDOW=15m
 IDEMPOTENCY_TTL_SECONDS=86400

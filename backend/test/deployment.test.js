@@ -10,10 +10,14 @@ const savedEnv = {
   NODE_ENV: process.env.NODE_ENV,
   PORT: process.env.PORT,
   FLY_APP_NAME: process.env.FLY_APP_NAME,
+  VERCEL: process.env.VERCEL,
+  API_RATE_LIMIT_MAX: process.env.API_RATE_LIMIT_MAX,
 };
 process.env.NODE_ENV = "production";
 process.env.PORT = "0";
-process.env.FLY_APP_NAME = "test-fly-app";
+process.env.VERCEL = "1";
+delete process.env.FLY_APP_NAME;
+delete process.env.API_RATE_LIMIT_MAX;
 
 const app = (await import("../app.js")).default;
 
@@ -21,9 +25,11 @@ test.after(() => {
   process.env.NODE_ENV = savedEnv.NODE_ENV;
   process.env.PORT = savedEnv.PORT;
   process.env.FLY_APP_NAME = savedEnv.FLY_APP_NAME;
+  process.env.VERCEL = savedEnv.VERCEL;
+  process.env.API_RATE_LIMIT_MAX = savedEnv.API_RATE_LIMIT_MAX;
 });
 
-test("Fly trusts only its direct proxy hop for client IPs", () => {
+test("Vercel trusts its direct proxy hop for client IPs", () => {
   assert.equal(app.get("trust proxy"), 1);
 });
 
@@ -45,7 +51,9 @@ const request = (server, path, { origin, method = "GET" } = {}) =>
       (res) => {
         let body = "";
         res.on("data", (chunk) => (body += chunk));
-        res.on("end", () => resolve({ status: res.statusCode, body }));
+        res.on("end", () =>
+          resolve({ status: res.statusCode, body, headers: res.headers }),
+        );
       },
     );
     req.on("error", reject);
@@ -58,6 +66,16 @@ test("the liveness route answers 200 behind a TLS-terminating proxy", async () =
     const { status, body } = await request(server, "/");
     assert.equal(status, 200);
     assert.match(body, /API is running/);
+  } finally {
+    server.close();
+  }
+});
+
+test("Vercel allows normal API traffic without the local 300-request cap", async () => {
+  const server = await listen();
+  try {
+    const { headers } = await request(server, "/api/does-not-exist");
+    assert.equal(headers["ratelimit-limit"], "3000");
   } finally {
     server.close();
   }

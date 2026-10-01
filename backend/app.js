@@ -92,7 +92,9 @@ app.use(securityHeaders);
 // Global API rate limiter - only applies to /api/* endpoints.
 const apiRateLimiter = rateLimit({
   windowMs: Number(process.env.API_RATE_LIMIT_WINDOW_SECONDS || 3600) * 1000,
-  max: Number(process.env.API_RATE_LIMIT_MAX) || 300,
+  max:
+    Number(process.env.API_RATE_LIMIT_MAX) ||
+    (process.env.VERCEL ? 3000 : 300),
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: "Too many API requests. Please try again later." },
