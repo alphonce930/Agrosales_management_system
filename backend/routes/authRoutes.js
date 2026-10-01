@@ -527,10 +527,14 @@ router.post("/forgot-password", async (req, res) => {
         [hashedToken, expiresAt, user.id],
       );
 
-      // Send email (async, don't wait for completion)
-      sendPasswordResetEmail(user.email, resetToken).catch((error) => {
-        console.error("Failed to send password reset email:", error);
-      });
+      try {
+        await sendPasswordResetEmail(user.email, resetToken);
+      } catch (error) {
+        console.error("Failed to send password reset email:", {
+          code: error?.code,
+          message: error?.message || String(error),
+        });
+      }
     }
 
     return res.json({
@@ -538,7 +542,10 @@ router.post("/forgot-password", async (req, res) => {
         "If an account with this email exists, a password reset link has been sent.",
     });
   } catch (error) {
-    console.error("Forgot password error:", error);
+    console.error("Forgot password error:", {
+      code: error?.code,
+      message: error?.message || String(error),
+    });
     return res
       .status(500)
       .json({ message: "Failed to process request. Please try again." });

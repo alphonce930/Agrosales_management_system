@@ -280,6 +280,10 @@ Apply `backend/database/schema.sql` to a blank Neon database before the first de
 3. log in as the admin user
 4. use existing sales, customers, product, payment, and analytics flows without errors
 
+The Vercel function also applies the password-reset column migration on its
+first database bootstrap, so existing databases created before password reset
+was added can use the forgot-password endpoint.
+
 ## Production notes
 
 - Do not enable `ALLOW_MEMORY_DB=true` outside local development.
