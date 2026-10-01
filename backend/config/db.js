@@ -1,6 +1,7 @@
 import pg from "pg";
 import dotenv from "dotenv";
 import { normalizePostgresSql as normalizeSql } from "../utils/sql.js";
+import { recordQuery } from "../utils/queryMetrics.js";
 
 dotenv.config();
 
@@ -44,6 +45,32 @@ const buildConnectionConfig = () => {
 };
 
 const pool = new Pool(buildConnectionConfig());
+
+// An idle client erroring (network blip, database restart) must never take the
+// process down with an unhandled 'error' event.
+pool.on("error", (error) => {
+  console.error(
+    JSON.stringify({
+      level: "error",
+      event: "pg_pool_error",
+      message: error?.message || String(error),
+    }),
+  );
+});
+
+/**
+ * Runs a statement through an executor while recording its duration, so every
+ * code path is measured consistently and slow queries are visible.
+ */
+const runTimedQuery = async (executor, text, params, originalSql) => {
+  const start = performance.now();
+  try {
+    return await executor.query(text, params);
+  } finally {
+    recordQuery(originalSql, performance.now() - start);
+  }
+};
+
 // A volatile fallback is only useful in explicit local development/tests. It
 // must never make a production write appear durable.
 const allowMemoryFallback =
@@ -403,7 +430,7 @@ export const query = async (sql, params = []) => {
 
   try {
     const preparedSql = normalizePostgresSql(sql);
-    const result = await pool.query(preparedSql, params);
+    const result = await runTimedQuery(pool, preparedSql, params, sql);
     const mutation = /^(INSERT|UPDATE|DELETE|CREATE|ALTER|DROP)\b/i.test(
       sql.trim(),
     );
@@ -427,7 +454,12 @@ export const getConnection = async () => {
     const connection = {
       ...client,
       async query(sql, params = []) {
-        const result = await client.query(normalizePostgresSql(sql), params);
+        const result = await runTimedQuery(
+          client,
+          normalizePostgresSql(sql),
+          params,
+          sql,
+        );
         const mutation = /^(INSERT|UPDATE|DELETE|CREATE|ALTER|DROP)\b/i.test(
           sql.trim(),
         );
@@ -457,9 +489,22 @@ export const getConnection = async () => {
   }
 };
 
-export async function initializeDatabase() {
+/**
+ * Cheap readiness probe that never mutates pool state. Used by /api/health so
+ * that monitoring does not reset the "database unavailable" back-off timer.
+ */
+export const pingDatabase = async () => {
   try {
     await pool.query("SELECT 1");
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export async function initializeDatabase() {
+  try {
+    await runTimedQuery(pool, "SELECT 1", [], "SELECT 1");
     return true;
   } catch (error) {
     if (!isConnectionError(error)) throw error;
